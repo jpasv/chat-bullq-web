@@ -362,4 +362,50 @@ export const inboxService = {
       },
     });
   },
+
+  async uploadMedia(file: File): Promise<{
+    url: string;
+    mimeType: string;
+    size: number;
+    filename: string;
+  }> {
+    const form = new FormData();
+    form.append('file', file, file.name);
+    const { data } = await api.post('/messages/uploads/media', form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      // Upload de arquivo grande estoura o timeout default de 15s do client.
+      timeout: 120000,
+    });
+    return data.data;
+  },
+
+  /**
+   * Anexo do chat (clipe de papel): sobe o arquivo e envia como
+   * IMAGE/VIDEO/DOCUMENT conforme o mime. Áudio gravado no app NÃO passa
+   * por aqui (sendAudioMessage transcoda pra voice note).
+   */
+  async sendMediaMessage(
+    conversationId: string,
+    file: File,
+    caption?: string,
+  ): Promise<Message> {
+    const upload = await this.uploadMedia(file);
+    const mime = upload.mimeType || file.type || '';
+    const type = mime.startsWith('image/')
+      ? 'IMAGE'
+      : mime.startsWith('video/')
+        ? 'VIDEO'
+        : 'DOCUMENT';
+    return this.sendMessage({
+      conversationId,
+      type,
+      content: {
+        mediaUrl: upload.url,
+        mimeType: mime,
+        fileSize: upload.size,
+        fileName: upload.filename || file.name,
+        ...(caption ? { caption } : {}),
+      },
+    });
+  },
 };

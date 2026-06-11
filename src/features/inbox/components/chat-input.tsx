@@ -8,14 +8,34 @@ import { useAudioRecorder } from '../hooks/use-audio-recorder';
 interface ChatInputProps {
   onSend: (text: string) => Promise<void>;
   onSendAudio?: (blob: Blob) => Promise<void>;
+  onSendFile?: (file: File) => Promise<void>;
   disabled?: boolean;
 }
 
-export function ChatInput({ onSend, onSendAudio, disabled }: ChatInputProps) {
+// Espelha o whitelist do backend (UploadsService.ALLOWED_MEDIA_MIME) — o
+// accept é só UX; a validação real acontece no upload.
+const FILE_ACCEPT = [
+  'image/*',
+  'video/*',
+  '.pdf',
+  '.doc',
+  '.docx',
+  '.xls',
+  '.xlsx',
+  '.ppt',
+  '.pptx',
+  '.txt',
+  '.csv',
+  '.zip',
+].join(',');
+
+export function ChatInput({ onSend, onSendAudio, onSendFile, disabled }: ChatInputProps) {
   const [text, setText] = useState('');
   const [isSending, setIsSending] = useState(false);
   const [isSendingAudio, setIsSendingAudio] = useState(false);
+  const [isSendingFile, setIsSendingFile] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const recorder = useAudioRecorder();
 
   const handleSubmit = useCallback(async () => {
@@ -61,6 +81,27 @@ export function ChatInput({ onSend, onSendAudio, disabled }: ChatInputProps) {
       setIsSendingAudio(false);
     }
   }, [recorder, onSendAudio]);
+
+  const handleFileChange = useCallback(
+    async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      // Limpa o value pra permitir reenviar o MESMO arquivo em seguida —
+      // sem isso o onChange não dispara na segunda escolha.
+      e.target.value = '';
+      if (!file || !onSendFile) return;
+      setIsSendingFile(true);
+      try {
+        await onSendFile(file);
+      } catch (err: any) {
+        toast.error(
+          err?.response?.data?.message || err?.message || 'Erro ao enviar arquivo',
+        );
+      } finally {
+        setIsSendingFile(false);
+      }
+    },
+    [onSendFile],
+  );
 
   const formatElapsed = (ms: number) => {
     const total = Math.floor(ms / 1000);
@@ -151,12 +192,25 @@ export function ChatInput({ onSend, onSendAudio, disabled }: ChatInputProps) {
   return (
     <div className="border-t border-zinc-200 bg-white p-3 dark:border-zinc-800 dark:bg-zinc-950">
       <div className="flex items-end gap-2">
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept={FILE_ACCEPT}
+          onChange={handleFileChange}
+          className="hidden"
+        />
         <button
           type="button"
-          className="mb-1 rounded-lg p-2 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-600 dark:hover:bg-zinc-800"
+          onClick={() => fileInputRef.current?.click()}
+          disabled={!onSendFile || isSendingFile}
+          className="mb-1 rounded-lg p-2 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-600 disabled:cursor-not-allowed disabled:opacity-50 dark:hover:bg-zinc-800"
           aria-label="Anexar arquivo"
         >
-          <Paperclip className="h-5 w-5" />
+          {isSendingFile ? (
+            <Loader2 className="h-5 w-5 animate-spin" />
+          ) : (
+            <Paperclip className="h-5 w-5" />
+          )}
         </button>
         <textarea
           ref={textareaRef}

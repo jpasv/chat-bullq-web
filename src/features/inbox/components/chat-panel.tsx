@@ -401,13 +401,12 @@ export function ChatPanel({
     };
   }, [conversation.id, emit]);
 
-  useEffect(() => {
-    const unsubNew = on('message:new', (payload: any) => {
-      const msg = payload.message;
-      if (!msg) return;
-      const convId = payload.conversationId ?? msg.conversationId;
-      if (convId !== conversation.id) return;
-
+  // Merge de uma mensagem no cache da conversa. Usado tanto pelo socket
+  // (message:new) quanto pela resposta do POST /messages — assim a mensagem
+  // enviada aparece na hora mesmo se o websocket estiver caído. Dedup por
+  // id/externalId garante que receber pelos dois caminhos não duplica.
+  const mergeMessage = useCallback(
+    (msg: Message) => {
       // Merge into the current cache. If there's no cache yet (initial
       // fetch still in flight, or cache evicted) we DON'T discard the
       // event — we invalidate so the refetch picks the new message up.
@@ -419,27 +418,38 @@ export function ChatPanel({
         queryClient.invalidateQueries({
           queryKey: ['messages', conversation.id],
         });
-      } else {
-        queryClient.setQueryData<{ messages: Message[] }>(
-          ['messages', conversation.id],
-          (prev) => {
-            if (!prev) return prev;
-            const existing = prev.messages || [];
-            // Dedup by id (authoritative) or by externalId when present.
-            const match = existing.findIndex(
-              (m) =>
-                m.id === msg.id ||
-                (msg.externalId && m.externalId && m.externalId === msg.externalId),
-            );
-            if (match !== -1) {
-              const merged = [...existing];
-              merged[match] = { ...existing[match], ...msg };
-              return { ...prev, messages: merged };
-            }
-            return { ...prev, messages: [...existing, msg] };
-          },
-        );
+        return;
       }
+      queryClient.setQueryData<{ messages: Message[] }>(
+        ['messages', conversation.id],
+        (prev) => {
+          if (!prev) return prev;
+          const existing = prev.messages || [];
+          // Dedup by id (authoritative) or by externalId when present.
+          const match = existing.findIndex(
+            (m) =>
+              m.id === msg.id ||
+              (msg.externalId && m.externalId && m.externalId === msg.externalId),
+          );
+          if (match !== -1) {
+            const merged = [...existing];
+            merged[match] = { ...existing[match], ...msg };
+            return { ...prev, messages: merged };
+          }
+          return { ...prev, messages: [...existing, msg] };
+        },
+      );
+    },
+    [conversation.id, queryClient],
+  );
+
+  useEffect(() => {
+    const unsubNew = on('message:new', (payload: any) => {
+      const msg = payload.message;
+      if (!msg) return;
+      const convId = payload.conversationId ?? msg.conversationId;
+      if (convId !== conversation.id) return;
+      mergeMessage(msg);
       queryClient.invalidateQueries({ queryKey: ['conversations'] });
     });
     const unsubStatus = on('message:status', (payload: any) => {
@@ -501,7 +511,7 @@ export function ChatPanel({
       unsubReconnect?.();
       unsubRevoked?.();
     };
-  }, [conversation.id, on, onReconnect, queryClient]);
+  }, [conversation.id, on, onReconnect, queryClient, mergeMessage]);
 
   const handleRevoke = useCallback(
     async (msg: Message) => {
@@ -568,16 +578,18 @@ export function ChatPanel({
   const cancelReply = useCallback(() => setReplyingTo(null), []);
 
   const handleSend = async (text: string) => {
-    // The server broadcasts message:new with the QUEUED row immediately, so we
-    // don't need to invalidate — the socket handler above will insert the row.
     const replyToMessageId = replyingTo?.id;
     try {
-      await inboxService.sendMessage({
+      // Insere a mensagem no cache com a resposta do POST — não dependemos
+      // só do message:new via socket pra mostrar a própria mensagem (se o
+      // socket estiver caído, ela apareceria só no próximo refetch).
+      const sent = await inboxService.sendMessage({
         conversationId: conversation.id,
         type: 'TEXT',
         content: { text },
         replyToMessageId,
       });
+      if (sent?.id) mergeMessage(sent);
       setReplyingTo(null);
     } catch (err) {
       // Fallback: if send fails before the socket event arrives, force a refresh.
@@ -588,7 +600,18 @@ export function ChatPanel({
 
   const handleSendAudio = async (blob: Blob) => {
     try {
-      await inboxService.sendAudioMessage(conversation.id, blob);
+      const sent = await inboxService.sendAudioMessage(conversation.id, blob);
+      if (sent?.id) mergeMessage(sent);
+    } catch (err) {
+      queryClient.invalidateQueries({ queryKey: ['messages', conversation.id] });
+      throw err;
+    }
+  };
+
+  const handleSendFile = async (file: File) => {
+    try {
+      const sent = await inboxService.sendMediaMessage(conversation.id, file);
+      if (sent?.id) mergeMessage(sent);
     } catch (err) {
       queryClient.invalidateQueries({ queryKey: ['messages', conversation.id] });
       throw err;
@@ -911,6 +934,7 @@ export function ChatPanel({
       <ChatInput
         onSend={handleSend}
         onSendAudio={handleSendAudio}
+        onSendFile={handleSendFile}
         disabled={conversation.status === 'CLOSED'}
       />
     </div>
