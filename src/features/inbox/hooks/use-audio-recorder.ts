@@ -23,20 +23,26 @@ export function useAudioRecorder() {
   const startedAtRef = useRef<number>(0);
   const tickRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const pickMime = (): string => {
-    if (typeof window === 'undefined') return 'audio/webm';
+  // Returns a mimeType the browser *confirms* it can record, or undefined.
+  // We must NOT fall back to a hard-coded type: Safari can't record webm, so
+  // `new MediaRecorder(stream, { mimeType: 'audio/webm' })` throws
+  // ("Invalid constraint" / NotSupportedError). When nothing is confirmed we
+  // construct without options and let the browser pick its default (Safari → mp4).
+  const pickSupportedMime = (): string | undefined => {
+    if (typeof window === 'undefined' || typeof MediaRecorder === 'undefined') {
+      return undefined;
+    }
     const candidates = [
       'audio/webm;codecs=opus',
       'audio/webm',
       'audio/mp4',
+      'audio/mp4;codecs=mp4a.40.2',
       'audio/ogg;codecs=opus',
     ];
     for (const m of candidates) {
-      if (typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported?.(m)) {
-        return m;
-      }
+      if (MediaRecorder.isTypeSupported?.(m)) return m;
     }
-    return 'audio/webm';
+    return undefined;
   };
 
   const cleanup = useCallback(() => {
@@ -61,16 +67,24 @@ export function useAudioRecorder() {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
-      const chosenMime = pickMime();
+      const preferred = pickSupportedMime();
+      const recorder = preferred
+        ? new MediaRecorder(stream, { mimeType: preferred })
+        : new MediaRecorder(stream);
+      // recorder.mimeType is the *actual* type the browser used (Safari fills
+      // it with audio/mp4 when we don't pass options). Use it for the Blob so
+      // the upload's Content-Type matches the real container.
+      const chosenMime = recorder.mimeType || preferred || 'audio/mp4';
       setMimeType(chosenMime);
-      const recorder = new MediaRecorder(stream, { mimeType: chosenMime });
       recorderRef.current = recorder;
 
       recorder.ondataavailable = (ev) => {
         if (ev.data && ev.data.size > 0) chunksRef.current.push(ev.data);
       };
       recorder.onstop = () => {
-        const out = new Blob(chunksRef.current, { type: chosenMime });
+        const out = new Blob(chunksRef.current, {
+          type: recorderRef.current?.mimeType || chosenMime,
+        });
         setBlob(out);
         setState('stopped');
       };
@@ -83,10 +97,15 @@ export function useAudioRecorder() {
       recorder.start(250); // chunk every 250ms
       setState('recording');
     } catch (err: any) {
+      // Surface the DOMException name too — on Safari/iOS the mic/recorder can
+      // throw OverconstrainedError ("Invalid constraint"), NotSupportedError
+      // (bad mimeType), or NotAllowedError. Seeing the name pins the cause.
+      const name = err?.name ? `${err.name}: ` : '';
       const msg =
         err?.name === 'NotAllowedError'
           ? 'Permissão de microfone negada'
-          : err?.message || 'Erro ao acessar microfone';
+          : `${name}${err?.message || 'Erro ao acessar microfone'}`;
+      console.error('[audio-recorder] getUserMedia/MediaRecorder failed', err);
       setError(msg);
       setState('idle');
       cleanup();
