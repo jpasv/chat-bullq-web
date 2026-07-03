@@ -16,7 +16,7 @@ function apiOrigin(): string {
  * origem da API — necessário porque o <audio>/<img> carrega do host da página
  * (web), não da API, quando a URL não tem host.
  */
-function toAbsoluteApiUrl(url: string): string {
+export function toAbsoluteApiUrl(url: string | undefined): string | undefined {
   if (!url || /^https?:\/\//i.test(url)) return url;
   return url.startsWith('/') ? `${apiOrigin()}${url}` : url;
 }
@@ -351,7 +351,7 @@ export const inboxService = {
   async resolveMediaUrl(messageId: string): Promise<{ url: string; mimeType?: string }> {
     const { data } = await api.get(`/messages/${messageId}/media`);
     const result = data.data as { url: string; mimeType?: string };
-    return { ...result, url: toAbsoluteApiUrl(result.url) };
+    return { ...result, url: toAbsoluteApiUrl(result.url) ?? result.url };
   },
 
   /**
@@ -367,7 +367,7 @@ export const inboxService = {
   async getPlaybackUrl(messageId: string): Promise<{ url: string; mimeType?: string }> {
     const { data } = await api.get(`/messages/${messageId}/playback`);
     const result = data.data as { url: string; mimeType?: string };
-    return { ...result, url: toAbsoluteApiUrl(result.url) };
+    return { ...result, url: toAbsoluteApiUrl(result.url) ?? result.url };
   },
 
   async transcribeAudio(messageId: string, force = false): Promise<TranscriptionResult> {

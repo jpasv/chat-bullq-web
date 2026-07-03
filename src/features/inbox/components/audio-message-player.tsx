@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Play, Pause, Loader2, Sparkles, ChevronDown, Check } from 'lucide-react';
 import { Popover, PopoverButton, PopoverPanel } from '@headlessui/react';
-import { inboxService, type Message, type TranscriptionResult } from '../services/inbox.service';
+import { inboxService, toAbsoluteApiUrl, type Message, type TranscriptionResult } from '../services/inbox.service';
 
 const SPEEDS = [1, 1.25, 1.5, 1.75, 2] as const;
 
@@ -37,15 +37,16 @@ export function AudioMessagePlayer({
   // the <audio> element loads the header but stays silent. We resolve (and
   // cache, server-side) that M4A on first play. If a previous play already
   // cached it, the socket delivers metadata.playback.url and we seed from it.
-  const cachedPlaybackUrl = message.metadata?.playback?.url as string | undefined;
+  const cachedPlaybackUrl = toAbsoluteApiUrl(
+    message.metadata?.playback?.url as string | undefined,
+  );
   const [resolvedUrl, setResolvedUrl] = useState<string | undefined>(cachedPlaybackUrl);
   const [resolving, setResolving] = useState(false);
   const mediaUrl = resolvedUrl;
 
   useEffect(() => {
-    if (message.metadata?.playback?.url) {
-      setResolvedUrl(message.metadata.playback.url);
-    }
+    const cached = toAbsoluteApiUrl(message.metadata?.playback?.url as string | undefined);
+    if (cached) setResolvedUrl(cached);
   }, [message.metadata?.playback?.url]);
 
   const ensureResolved = async (): Promise<string | null> => {
