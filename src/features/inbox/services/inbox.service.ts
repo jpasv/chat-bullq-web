@@ -1,6 +1,26 @@
 import { api } from '@/lib/api';
 import type { ProjectSummary } from '@/features/projects/services/projects.service';
 
+/** Origem (scheme://host:port) da API, derivada do baseURL do client. */
+function apiOrigin(): string {
+  try {
+    return new URL(api.defaults.baseURL || '').origin;
+  } catch {
+    return typeof window !== 'undefined' ? window.location.origin : '';
+  }
+}
+
+/**
+ * Torna absoluta uma URL de mídia servida pela API. URLs já absolutas passam
+ * direto; caminhos relativos ("/api/v1/uploads/...") são resolvidos contra a
+ * origem da API — necessário porque o <audio>/<img> carrega do host da página
+ * (web), não da API, quando a URL não tem host.
+ */
+function toAbsoluteApiUrl(url: string): string {
+  if (!url || /^https?:\/\//i.test(url)) return url;
+  return url.startsWith('/') ? `${apiOrigin()}${url}` : url;
+}
+
 export interface TagRef {
   id: string;
   name: string;
@@ -330,7 +350,8 @@ export const inboxService = {
 
   async resolveMediaUrl(messageId: string): Promise<{ url: string; mimeType?: string }> {
     const { data } = await api.get(`/messages/${messageId}/media`);
-    return data.data;
+    const result = data.data as { url: string; mimeType?: string };
+    return { ...result, url: toAbsoluteApiUrl(result.url) };
   },
 
   /**
@@ -338,10 +359,15 @@ export const inboxService = {
    * WhatsApp são OGG/Opus, que o Safari/iOS não decodifica; o backend transcoda
    * pra M4A na primeira chamada e cacheia. Usada pelo player em vez do mediaUrl
    * cru.
+   *
+   * Se a URL vier relativa (APP_URL não configurado no servidor) resolvemos
+   * contra a origem da própria API que o client já conhece — o <audio> precisa
+   * de URL absoluta senão o browser tenta baixar do host do web → 404.
    */
   async getPlaybackUrl(messageId: string): Promise<{ url: string; mimeType?: string }> {
     const { data } = await api.get(`/messages/${messageId}/playback`);
-    return data.data;
+    const result = data.data as { url: string; mimeType?: string };
+    return { ...result, url: toAbsoluteApiUrl(result.url) };
   },
 
   async transcribeAudio(messageId: string, force = false): Promise<TranscriptionResult> {
