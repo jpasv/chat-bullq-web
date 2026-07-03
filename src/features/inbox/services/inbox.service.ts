@@ -107,6 +107,8 @@ export interface MessageMetadata {
   isEcho?: boolean;
   replyTo?: ReplyContext | null;
   transcription?: TranscriptionResult | null;
+  /** URL de playback (AAC/M4A) cacheada — tocável em qualquer navegador. */
+  playback?: { url: string; mimeType?: string } | null;
   rawPayload?: any;
   [key: string]: any;
 }
@@ -328,6 +330,17 @@ export const inboxService = {
 
   async resolveMediaUrl(messageId: string): Promise<{ url: string; mimeType?: string }> {
     const { data } = await api.get(`/messages/${messageId}/media`);
+    return data.data;
+  },
+
+  /**
+   * URL de playback (AAC/M4A) tocável em qualquer navegador. As voice notes do
+   * WhatsApp são OGG/Opus, que o Safari/iOS não decodifica; o backend transcoda
+   * pra M4A na primeira chamada e cacheia. Usada pelo player em vez do mediaUrl
+   * cru.
+   */
+  async getPlaybackUrl(messageId: string): Promise<{ url: string; mimeType?: string }> {
+    const { data } = await api.get(`/messages/${messageId}/playback`);
     return data.data;
   },
 
