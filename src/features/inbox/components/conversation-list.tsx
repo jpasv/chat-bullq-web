@@ -12,15 +12,11 @@ import {
   RotateCcw,
   Loader2,
   ChevronDown,
-  Inbox,
   Users,
   User,
   FolderPlus,
   MailOpen,
   Archive,
-  Tag as TagIcon,
-  Layers,
-  FolderKanban,
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
@@ -38,8 +34,13 @@ import {
 } from '@/features/inbox-views/services/inbox-views.service';
 import { channelsService } from '@/features/channels/services/channels.service';
 import { segmentsService } from '@/features/segments/services/segments.service';
-import { PROJECT_STATUSES } from '@/features/projects/project-fields';
 import { tagsService } from '@/features/settings/services/tags.service';
+import { membersService } from '@/features/settings/services/members.service';
+import {
+  InboxFilterPanel,
+  ASSIGNED_TO_ME,
+  type DateRangePreset,
+} from './inbox-filter-panel';
 import { ZappfyIcon, MetaIcon, InstagramIcon } from '@/components/ui/icons';
 import { useOrgId } from '@/hooks/use-org-query-key';
 import { useSocket } from '../hooks/use-socket';
@@ -91,6 +92,20 @@ const statusColors: Record<string, string> = {
   CLOSED: 'bg-zinc-300 dark:bg-zinc-600',
 };
 
+const STATUS_CHIP_LABELS: Record<string, string> = {
+  PENDING: 'Pendente',
+  OPEN: 'Aberto',
+  WAITING: 'Aguardando',
+  CLOSED: 'Fechado',
+};
+
+const DATE_CHIP_LABELS: Record<string, string> = {
+  TODAY: 'Hoje',
+  '7D': '7 dias',
+  '30D': '30 dias',
+  RANGE: 'Intervalo',
+};
+
 type ListFilter = 'unread' | 'archived' | 'groups';
 
 const filterOptions: { label: string; value: ListFilter; icon: React.ElementType; description: string }[] = [
@@ -131,6 +146,11 @@ export function ConversationList({ activeId, onSelect, viewId }: ConversationLis
   const orgId = useOrgId();
   const { on, onReconnect } = useSocket();
   const currentUserId = useAuthStore((s) => s.user?.id ?? null);
+  // Role vem da org ativa (OWNER/ADMIN/AGENT). Pra AGENT, o filtro de
+  // Atendente é um no-op visual (RN-05 é server-side) — desabilitamos a linha.
+  const currentRole = useAuthStore(
+    (s) => s.organizations.find((o) => o.id === s.activeOrgId)?.role ?? null,
+  );
   const {
     preferences: savedPrefs,
     isLoaded: prefsLoaded,
@@ -146,7 +166,16 @@ export function ConversationList({ activeId, onSelect, viewId }: ConversationLis
   const [selectedProjectStatus, setSelectedProjectStatus] = useState('');
   const [mineProjects, setMineProjects] = useState(false);
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
-  const [tagSearch, setTagSearch] = useState('');
+  // Novas dimensões do painel unificado.
+  const [selectedStatus, setSelectedStatus] = useState('');
+  // null = sem filtro; ASSIGNED_TO_ME = resolve pro currentUserId; senão userId.
+  const [selectedAssignedToId, setSelectedAssignedToId] = useState<string | null>(
+    null,
+  );
+  const [dateRange, setDateRange] = useState<DateRangePreset>('ALL');
+  // Datas do preset RANGE — strings YYYY-MM-DD dos <input type="date">.
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
   // showGroups conta como filtro ativo SÓ quando ON (default OFF é o
   // comportamento padrão, não merece badge). Tags contam 1 por tag.
   const activeFilterCount =
@@ -155,6 +184,9 @@ export function ConversationList({ activeId, onSelect, viewId }: ConversationLis
     (showGroups ? 1 : 0) +
     (selectedProjectStatus ? 1 : 0) +
     (mineProjects ? 1 : 0) +
+    (selectedStatus ? 1 : 0) +
+    (selectedAssignedToId ? 1 : 0) +
+    (dateRange !== 'ALL' ? 1 : 0) +
     selectedTagIds.length;
   const [scope, setScope] = useState<ScopeFilter>('ALL');
   const [search, setSearch] = useState('');
@@ -201,6 +233,21 @@ export function ConversationList({ activeId, onSelect, viewId }: ConversationLis
     if (Array.isArray(savedPrefs.tagIds)) {
       setSelectedTagIds(savedPrefs.tagIds);
     }
+    if (typeof savedPrefs.selectedStatus === 'string') {
+      setSelectedStatus(savedPrefs.selectedStatus);
+    }
+    if (savedPrefs.selectedAssignedToId !== undefined) {
+      setSelectedAssignedToId(savedPrefs.selectedAssignedToId ?? null);
+    }
+    if (typeof savedPrefs.dateRange === 'string') {
+      setDateRange(savedPrefs.dateRange as DateRangePreset);
+    }
+    if (savedPrefs.dateFrom !== undefined && savedPrefs.dateFrom !== null) {
+      setDateFrom(savedPrefs.dateFrom);
+    }
+    if (savedPrefs.dateTo !== undefined && savedPrefs.dateTo !== null) {
+      setDateTo(savedPrefs.dateTo);
+    }
   }, [prefsLoaded, savedPrefs]);
 
   const toggleListFilter = useCallback(
@@ -235,6 +282,11 @@ export function ConversationList({ activeId, onSelect, viewId }: ConversationLis
     setSelectedTagIds([]);
     setSelectedProjectStatus('');
     setMineProjects(false);
+    setSelectedStatus('');
+    setSelectedAssignedToId(null);
+    setDateRange('ALL');
+    setDateFrom('');
+    setDateTo('');
     updatePrefs({
       unreadOnly: false,
       archivedOnly: false,
@@ -242,8 +294,54 @@ export function ConversationList({ activeId, onSelect, viewId }: ConversationLis
       tagIds: [],
       selectedProjectStatus: '',
       mineProjects: false,
+      selectedStatus: '',
+      selectedAssignedToId: null,
+      dateRange: 'ALL',
+      dateFrom: null,
+      dateTo: null,
     });
   }, [updatePrefs]);
+
+  const handleStatusChange = useCallback(
+    (value: string) => {
+      setSelectedStatus(value);
+      updatePrefs({ selectedStatus: value });
+    },
+    [updatePrefs],
+  );
+
+  const handleAssignedToChange = useCallback(
+    (value: string | null) => {
+      const next = value || null;
+      setSelectedAssignedToId(next);
+      updatePrefs({ selectedAssignedToId: next });
+    },
+    [updatePrefs],
+  );
+
+  const handleDateRangeChange = useCallback(
+    (preset: DateRangePreset) => {
+      setDateRange(preset);
+      updatePrefs({ dateRange: preset });
+    },
+    [updatePrefs],
+  );
+
+  const handleDateFromChange = useCallback(
+    (value: string) => {
+      setDateFrom(value);
+      updatePrefs({ dateFrom: value || null });
+    },
+    [updatePrefs],
+  );
+
+  const handleDateToChange = useCallback(
+    (value: string) => {
+      setDateTo(value);
+      updatePrefs({ dateTo: value || null });
+    },
+    [updatePrefs],
+  );
 
   const handleProjectStatusChange = useCallback(
     (value: string) => {
@@ -305,7 +403,7 @@ export function ConversationList({ activeId, onSelect, viewId }: ConversationLis
     () => [...selectedTagIds].sort().join(','),
     [selectedTagIds],
   );
-  const filterKey = `${unreadOnly ? 'u' : ''}|${archivedOnly ? 'a' : ''}|${showGroups ? 'g' : ''}|ps:${selectedProjectStatus}|mp:${mineProjects ? '1' : ''}|t:${tagsKey}`;
+  const filterKey = `${unreadOnly ? 'u' : ''}|${archivedOnly ? 'a' : ''}|${showGroups ? 'g' : ''}|ps:${selectedProjectStatus}|mp:${mineProjects ? '1' : ''}|t:${tagsKey}|st:${selectedStatus}|at:${selectedAssignedToId ?? ''}|dr:${dateRange}|df:${dateFrom}|dt:${dateTo}`;
 
   const handleSearchChange = useCallback((value: string) => {
     setSearch(value);
@@ -335,11 +433,11 @@ export function ConversationList({ activeId, onSelect, viewId }: ConversationLis
     queryFn: () => segmentsService.list(),
   });
 
-  const filteredTags = useMemo(() => {
-    const q = tagSearch.trim().toLowerCase();
-    if (!q) return tags;
-    return tags.filter((t) => t.name.toLowerCase().includes(q));
-  }, [tags, tagSearch]);
+  const { data: members = [] } = useQuery({
+    queryKey: ['org-members'],
+    queryFn: () => membersService.list(),
+    staleTime: 60_000,
+  });
 
   // Drop selected tag ids that no longer exist (tag deleted in another tab).
   // Avoid sending stale ids to the backend — they'd just match nothing.
@@ -353,15 +451,41 @@ export function ConversationList({ activeId, onSelect, viewId }: ConversationLis
     }
   }, [tags, selectedTagIds, updatePrefs]);
 
-  const selectedChannel = useMemo(
-    () => channels.find((c) => c.id === selectedChannelId) ?? null,
-    [channels, selectedChannelId],
-  );
-
-  const selectedSegment = useMemo(
-    () => segments.find((s) => s.id === selectedSegmentId) ?? null,
-    [segments, selectedSegmentId],
-  );
+  // Resolve o preset de Data em ISO { from, to }. Roda client-side, então
+  // Date.now()/new Date() são seguros aqui. Backend filtra por lastMessageAt
+  // (gte from / lte to). filterKey já inclui dateRange/from/to, então o
+  // recompute do memo casa com a chave de cache.
+  const resolvedDate = useMemo((): { from?: string; to?: string } => {
+    const now = new Date();
+    if (dateRange === 'TODAY') {
+      const start = new Date(now);
+      start.setHours(0, 0, 0, 0);
+      return { from: start.toISOString() };
+    }
+    if (dateRange === '7D') {
+      return {
+        from: new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString(),
+      };
+    }
+    if (dateRange === '30D') {
+      return {
+        from: new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString(),
+      };
+    }
+    if (dateRange === 'RANGE') {
+      const out: { from?: string; to?: string } = {};
+      if (dateFrom) {
+        const d = new Date(`${dateFrom}T00:00:00`);
+        if (!Number.isNaN(d.getTime())) out.from = d.toISOString();
+      }
+      if (dateTo) {
+        const d = new Date(`${dateTo}T23:59:59.999`);
+        if (!Number.isNaN(d.getTime())) out.to = d.toISOString();
+      }
+      return out;
+    }
+    return {};
+  }, [dateRange, dateFrom, dateTo]);
 
   // Reset scroll when filters/search change
   useEffect(() => {
@@ -375,7 +499,7 @@ export function ConversationList({ activeId, onSelect, viewId }: ConversationLis
     hasNextPage,
     isFetchingNextPage,
   } = useInfiniteQuery({
-    queryKey: ['conversations', orgId, viewId ?? null, filterKey, debouncedSearch, selectedChannelId, selectedSegmentId, scope, currentUserId],
+    queryKey: ['conversations', orgId, viewId ?? null, filterKey, debouncedSearch, selectedChannelId, selectedSegmentId, scope, currentUserId, selectedStatus, selectedAssignedToId, dateRange, dateFrom, dateTo],
     queryFn: ({ pageParam = 1 }) => {
       const params: Record<string, string> = { limit: '30', page: String(pageParam) };
       if (unreadOnly) params.unread = 'true';
@@ -412,7 +536,25 @@ export function ConversationList({ activeId, onSelect, viewId }: ConversationLis
       }
       if (debouncedSearch) params.search = debouncedSearch;
       if (selectedTagIds.length > 0) params.tagIds = selectedTagIds.join(',');
-      if (scope === 'MINE' && currentUserId) params.assignedToId = currentUserId;
+      // Status da conversa (PENDING/OPEN/WAITING/CLOSED). Backend ignora
+      // valores inválidos, então '' = todos.
+      if (selectedStatus) params.status = selectedStatus;
+      // Atendente tem precedência sobre o scope MINE. UM único writer de
+      // assignedToId: se o filtro de Atendente está setado, ele manda;
+      // senão cai no comportamento antigo do scope. ASSIGNED_TO_ME resolve
+      // pro usuário atual.
+      const resolvedAssignee =
+        selectedAssignedToId === ASSIGNED_TO_ME
+          ? currentUserId
+          : selectedAssignedToId;
+      if (resolvedAssignee) {
+        params.assignedToId = resolvedAssignee;
+      } else if (scope === 'MINE' && currentUserId) {
+        params.assignedToId = currentUserId;
+      }
+      // Data — presets/intervalo já resolvidos em ISO.
+      if (resolvedDate.from) params.dateFrom = resolvedDate.from;
+      if (resolvedDate.to) params.dateTo = resolvedDate.to;
       if (viewId) {
         return inboxViewsService.getConversations(viewId, params);
       }
@@ -863,108 +1005,6 @@ export function ConversationList({ activeId, onSelect, viewId }: ConversationLis
         </Popover>
       </div>
 
-      {/* Channel selector — hidden when an inbox view is active, since the
-          view already pins the channel(s) via its saved filters. Letting
-          the user override here would just confuse the result. */}
-      {!viewId && (
-      <div className="px-3 pt-2">
-        <Popover className="relative">
-          <PopoverButton className="flex w-full items-center gap-2 rounded-md border border-zinc-200/80 bg-white px-2.5 py-1.5 text-left text-[13px] text-zinc-700 outline-none transition-colors hover:bg-zinc-50 data-[open]:border-primary/40 data-[open]:bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-200 dark:hover:bg-zinc-900 dark:data-[open]:bg-zinc-900">
-            {(() => {
-              const Icon = selectedSegment
-                ? Layers
-                : selectedChannel
-                  ? channelIcons[selectedChannel.type] || MessageSquare
-                  : Inbox;
-              return <Icon className="h-3.5 w-3.5 shrink-0 text-zinc-500 dark:text-zinc-400" />;
-            })()}
-            <span className="flex-1 truncate font-medium">
-              {selectedSegment
-                ? selectedSegment.name
-                : selectedChannel
-                  ? selectedChannel.name
-                  : 'Todos os canais'}
-            </span>
-            <ChevronDown className="h-3.5 w-3.5 shrink-0 text-zinc-400" />
-          </PopoverButton>
-          <PopoverPanel
-            anchor="bottom start"
-            transition
-            className="z-50 mt-1.5 w-[var(--button-width)] rounded-lg border border-zinc-200/80 bg-white p-1 shadow-lg outline-none transition duration-100 ease-out data-[closed]:scale-95 data-[closed]:opacity-0 dark:border-zinc-800 dark:bg-zinc-900 [--anchor-gap:0.25rem]"
-          >
-            {({ close }) => (
-              <>
-                {(() => {
-                  const allActive = selectedChannelId === null && selectedSegmentId === null;
-                  return (
-                    <button
-                      onClick={() => { handleChannelChange(null); close(); }}
-                      className={`flex w-full items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left text-[13px] transition-colors ${
-                        allActive
-                          ? 'bg-primary/[0.06] font-medium text-primary dark:bg-primary/10'
-                          : 'text-zinc-700 hover:bg-zinc-50 dark:text-zinc-300 dark:hover:bg-zinc-800/60'
-                      }`}
-                    >
-                      <Inbox className="h-3.5 w-3.5 shrink-0" />
-                      <span className="flex-1">Todos os canais</span>
-                      {allActive && <Check className="h-3.5 w-3.5 text-primary" />}
-                    </button>
-                  );
-                })()}
-                {channels.length > 0 && (
-                  <div className="mx-2 my-1 border-t border-zinc-100 dark:border-zinc-800" />
-                )}
-                {channels.map((channel) => {
-                  const Icon = channelIcons[channel.type] || MessageSquare;
-                  const isActive = selectedChannelId === channel.id;
-                  return (
-                    <button
-                      key={channel.id}
-                      onClick={() => { handleChannelChange(channel.id); close(); }}
-                      className={`flex w-full items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left text-[13px] transition-colors ${
-                        isActive
-                          ? 'bg-primary/[0.06] font-medium text-primary dark:bg-primary/10'
-                          : 'text-zinc-700 hover:bg-zinc-50 dark:text-zinc-300 dark:hover:bg-zinc-800/60'
-                      }`}
-                    >
-                      <Icon className="h-3.5 w-3.5 shrink-0" />
-                      <span className="flex-1 truncate">{channel.name}</span>
-                      {isActive && <Check className="h-3.5 w-3.5 text-primary" />}
-                    </button>
-                  );
-                })}
-                {segments.length > 0 && (
-                  <>
-                    <div className="mx-2 my-1 border-t border-zinc-100 dark:border-zinc-800" />
-                    <p className="px-2.5 pb-1 pt-1 text-[11px] font-medium uppercase tracking-wide text-zinc-400 dark:text-zinc-500">
-                      Segmentos
-                    </p>
-                    {segments.map((segment) => {
-                      const isActive = selectedSegmentId === segment.id;
-                      return (
-                        <button
-                          key={segment.id}
-                          onClick={() => { handleSegmentChange(segment.id); close(); }}
-                          className={`flex w-full items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left text-[13px] transition-colors ${
-                            isActive
-                              ? 'bg-primary/[0.06] font-medium text-primary dark:bg-primary/10'
-                              : 'text-zinc-700 hover:bg-zinc-50 dark:text-zinc-300 dark:hover:bg-zinc-800/60'
-                          }`}
-                        >
-                          <Layers className="h-3.5 w-3.5 shrink-0" />
-                          <span className="flex-1 truncate">{segment.name}</span>
-                          {isActive && <Check className="h-3.5 w-3.5 text-primary" />}
-                        </button>
-                      );
-                    })}
-                  </>
-                )}
-              </>
-            )}
-          </PopoverPanel>
-        </Popover>
-      </div>
-      )}
 
       {/* Search + Filter */}
       <div className="flex items-center gap-1.5 px-3 pt-2 pb-2">
@@ -1010,187 +1050,47 @@ export function ConversationList({ activeId, onSelect, viewId }: ConversationLis
           <PopoverPanel
             anchor="bottom end"
             transition
-            className="z-50 mt-1.5 w-64 rounded-lg border border-zinc-200/80 bg-white p-1 shadow-lg outline-none transition duration-100 ease-out data-[closed]:scale-95 data-[closed]:opacity-0 dark:border-zinc-800 dark:bg-zinc-900 [--anchor-gap:0.25rem]"
+            className="z-50 mt-1.5 w-72 rounded-lg border border-zinc-200/80 bg-white p-1 shadow-lg outline-none transition duration-100 ease-out data-[closed]:scale-95 data-[closed]:opacity-0 dark:border-zinc-800 dark:bg-zinc-900 [--anchor-gap:0.25rem]"
           >
-            <div>
-              <p className="px-2.5 py-1.5 text-[11px] font-medium uppercase tracking-wider text-zinc-400 dark:text-zinc-500">
-                Filtros
-              </p>
-              {filterOptions.map((f) => {
-                const isActive =
-                  f.value === 'unread'
-                    ? unreadOnly
-                    : f.value === 'archived'
-                      ? archivedOnly
-                      : showGroups;
-                const Icon = f.icon;
-                return (
-                  <button
-                    key={f.value}
-                    onClick={() => toggleListFilter(f.value)}
-                    className={`flex w-full items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left text-[13px] transition-colors ${
-                      isActive
-                        ? 'bg-primary/[0.06] font-medium text-primary dark:bg-primary/10'
-                        : 'text-zinc-700 hover:bg-zinc-50 dark:text-zinc-300 dark:hover:bg-zinc-800/60'
-                    }`}
-                  >
-                    <div className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors ${
-                      isActive
-                        ? 'border-primary bg-primary text-white'
-                        : 'border-zinc-300 dark:border-zinc-600'
-                    }`}>
-                      {isActive && <Check className="h-2.5 w-2.5" />}
-                    </div>
-                    <Icon className="h-3.5 w-3.5 shrink-0" />
-                    <span className="flex-1 leading-tight">
-                      <span className="block">{f.label}</span>
-                      <span className="block text-[10px] font-normal text-zinc-400 dark:text-zinc-500">
-                        {f.description}
-                      </span>
-                    </span>
-                  </button>
-                );
-              })}
-              {/* ─── Projeto ─── */}
-              <div className="mx-2 my-1 border-t border-zinc-100 dark:border-zinc-800" />
-              <p className="px-2.5 py-1.5 text-[11px] font-medium uppercase tracking-wider text-zinc-400 dark:text-zinc-500">
-                Projeto
-              </p>
-              <div className="px-2.5 pb-1.5">
-                <select
-                  value={selectedProjectStatus}
-                  onChange={(e) => handleProjectStatusChange(e.target.value)}
-                  className="w-full rounded-md border border-zinc-200 bg-white px-2 py-1.5 text-[12px] text-zinc-700 outline-none focus:border-primary focus:ring-1 focus:ring-primary dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200"
-                >
-                  <option value="">Status: todos</option>
-                  {PROJECT_STATUSES.map((s) => (
-                    <option key={s} value={s}>
-                      {s}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <button
-                onClick={toggleMineProjects}
-                className={`flex w-full items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left text-[13px] transition-colors ${
-                  mineProjects
-                    ? 'bg-primary/[0.06] font-medium text-primary dark:bg-primary/10'
-                    : 'text-zinc-700 hover:bg-zinc-50 dark:text-zinc-300 dark:hover:bg-zinc-800/60'
-                }`}
-              >
-                <div
-                  className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors ${
-                    mineProjects
-                      ? 'border-primary bg-primary text-white'
-                      : 'border-zinc-300 dark:border-zinc-600'
-                  }`}
-                >
-                  {mineProjects && <Check className="h-2.5 w-2.5" />}
-                </div>
-                <FolderKanban className="h-3.5 w-3.5 shrink-0" />
-                <span className="flex-1 leading-tight">Meus projetos</span>
-              </button>
-
-              {tags.length > 0 && (
-                <>
-                  <div className="mx-2 my-1 border-t border-zinc-100 dark:border-zinc-800" />
-                  <div className="flex items-center justify-between px-2.5 py-1.5">
-                    <p className="text-[11px] font-medium uppercase tracking-wider text-zinc-400 dark:text-zinc-500">
-                      Tags
-                    </p>
-                    {selectedTagIds.length > 0 && (
-                      <button
-                        onClick={() => {
-                          setSelectedTagIds([]);
-                          updatePrefs({ tagIds: [] });
-                        }}
-                        className="text-[10px] text-zinc-400 transition-colors hover:text-zinc-600 dark:hover:text-zinc-300"
-                      >
-                        Limpar
-                      </button>
-                    )}
-                  </div>
-                  <div className="px-1.5 pb-1">
-                    <div className="relative">
-                      <Search className="pointer-events-none absolute left-2 top-1/2 h-3 w-3 -translate-y-1/2 text-zinc-400" />
-                      <input
-                        type="text"
-                        placeholder="Buscar tag..."
-                        value={tagSearch}
-                        onChange={(e) => setTagSearch(e.target.value)}
-                        // Headless UI fecha o popover quando o foco vaza ou
-                        // quando ESC sobe — paramos a propagação pra ESC
-                        // limpar o campo sem fechar tudo.
-                        onKeyDown={(e) => {
-                          if (e.key === 'Escape' && tagSearch) {
-                            e.stopPropagation();
-                            setTagSearch('');
-                          }
-                        }}
-                        className="w-full rounded-md border-0 bg-zinc-100/80 py-1 pl-7 pr-7 text-[12px] text-zinc-900 outline-none ring-1 ring-transparent transition-all placeholder:text-zinc-400 focus:bg-white focus:ring-primary/30 dark:bg-zinc-800/60 dark:text-zinc-100 dark:placeholder:text-zinc-500 dark:focus:bg-zinc-900"
-                      />
-                      {tagSearch && (
-                        <button
-                          onClick={() => setTagSearch('')}
-                          className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-0.5 text-zinc-400 transition-colors hover:text-zinc-600 dark:hover:text-zinc-300"
-                        >
-                          <X className="h-2.5 w-2.5" />
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                  <div className="max-h-56 overflow-y-auto scrollbar-thin">
-                    {filteredTags.length === 0 ? (
-                      <p className="px-2.5 py-2 text-center text-[11px] text-zinc-400 dark:text-zinc-500">
-                        Nenhuma tag encontrada
-                      </p>
-                    ) : (
-                      filteredTags.map((tag) => {
-                        const isActive = selectedTagIds.includes(tag.id);
-                        return (
-                          <button
-                            key={tag.id}
-                            onClick={() => toggleTagFilter(tag.id)}
-                            className={`flex w-full items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left text-[13px] transition-colors ${
-                              isActive
-                                ? 'bg-primary/[0.06] font-medium text-primary dark:bg-primary/10'
-                                : 'text-zinc-700 hover:bg-zinc-50 dark:text-zinc-300 dark:hover:bg-zinc-800/60'
-                            }`}
-                          >
-                            <div
-                              className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors ${
-                                isActive
-                                  ? 'border-primary bg-primary text-white'
-                                  : 'border-zinc-300 dark:border-zinc-600'
-                              }`}
-                            >
-                              {isActive && <Check className="h-2.5 w-2.5" />}
-                            </div>
-                            <span
-                              className="h-2 w-2 shrink-0 rounded-full"
-                              style={{ backgroundColor: tag.color }}
-                            />
-                            <span className="flex-1 truncate">{tag.name}</span>
-                          </button>
-                        );
-                      })
-                    )}
-                  </div>
-                </>
-              )}
-              {activeFilterCount > 0 && (
-                <>
-                  <div className="mx-2 my-1 border-t border-zinc-100 dark:border-zinc-800" />
-                  <button
-                    onClick={clearListFilters}
-                    className="flex w-full items-center justify-center gap-1 rounded-md px-2.5 py-1.5 text-[12px] text-zinc-400 transition-colors hover:bg-zinc-50 hover:text-zinc-600 dark:hover:bg-zinc-800/60 dark:hover:text-zinc-300"
-                  >
-                    <X className="h-3 w-3" />
-                    Limpar filtros
-                  </button>
-                </>
-              )}
-            </div>
+            <InboxFilterPanel
+              hideChannelSegment={!!viewId}
+              disableAtendente={currentRole === 'AGENT'}
+              segments={segments}
+              tags={tags}
+              channels={channels}
+              members={members}
+              selectedSegmentId={selectedSegmentId}
+              onSegmentChange={handleSegmentChange}
+              selectedChannelId={selectedChannelId}
+              onChannelChange={handleChannelChange}
+              selectedTagIds={selectedTagIds}
+              onToggleTag={toggleTagFilter}
+              onClearTags={() => {
+                setSelectedTagIds([]);
+                updatePrefs({ tagIds: [] });
+              }}
+              selectedAssignedToId={selectedAssignedToId}
+              onAssignedToChange={handleAssignedToChange}
+              dateRange={dateRange}
+              dateFrom={dateFrom}
+              dateTo={dateTo}
+              onDateRangeChange={handleDateRangeChange}
+              onDateFromChange={handleDateFromChange}
+              onDateToChange={handleDateToChange}
+              selectedStatus={selectedStatus}
+              onStatusChange={handleStatusChange}
+              selectedProjectStatus={selectedProjectStatus}
+              onProjectStatusChange={handleProjectStatusChange}
+              mineProjects={mineProjects}
+              onToggleMineProjects={toggleMineProjects}
+              showGroups={showGroups}
+              onToggleGroups={() => toggleListFilter('groups')}
+              unreadOnly={unreadOnly}
+              onToggleUnread={() => toggleListFilter('unread')}
+              archivedOnly={archivedOnly}
+              onToggleArchived={() => toggleListFilter('archived')}
+              onClearAll={clearListFilters}
+            />
           </PopoverPanel>
         </Popover>
       </div>
@@ -1250,6 +1150,42 @@ export function ConversationList({ activeId, onSelect, viewId }: ConversationLis
               </span>
             );
           })}
+          {selectedStatus && (
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-2.5 py-0.5 text-[11px] font-medium text-primary dark:bg-primary/20">
+              {STATUS_CHIP_LABELS[selectedStatus] ?? selectedStatus}
+              <button
+                onClick={() => handleStatusChange('')}
+                className="rounded-full p-0.5 transition-colors hover:bg-primary/20 dark:hover:bg-primary/30"
+              >
+                <X className="h-2.5 w-2.5" />
+              </button>
+            </span>
+          )}
+          {selectedAssignedToId && (
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-2.5 py-0.5 text-[11px] font-medium text-primary dark:bg-primary/20">
+              {selectedAssignedToId === ASSIGNED_TO_ME
+                ? 'Atribuídas a mim'
+                : members.find((m) => m.user.id === selectedAssignedToId)?.user
+                    .name ?? 'Atendente'}
+              <button
+                onClick={() => handleAssignedToChange(null)}
+                className="rounded-full p-0.5 transition-colors hover:bg-primary/20 dark:hover:bg-primary/30"
+              >
+                <X className="h-2.5 w-2.5" />
+              </button>
+            </span>
+          )}
+          {dateRange !== 'ALL' && (
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-2.5 py-0.5 text-[11px] font-medium text-primary dark:bg-primary/20">
+              {DATE_CHIP_LABELS[dateRange] ?? 'Data'}
+              <button
+                onClick={() => handleDateRangeChange('ALL')}
+                className="rounded-full p-0.5 transition-colors hover:bg-primary/20 dark:hover:bg-primary/30"
+              >
+                <X className="h-2.5 w-2.5" />
+              </button>
+            </span>
+          )}
           {activeFilterCount > 1 && (
             <button
               onClick={clearListFilters}
