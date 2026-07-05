@@ -17,6 +17,8 @@ import {
   Filter,
   Pencil,
   Mail,
+  Clock,
+  CircleCheck,
   X,
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -53,8 +55,10 @@ export function ConversationContextMenu({
   const [pendingViewId, setPendingViewId] = useState<string | null>(null);
   const [archiving, setArchiving] = useState(false);
   const [markingUnread, setMarkingUnread] = useState(false);
+  const [settingWaiting, setSettingWaiting] = useState(false);
   const [renameOpen, setRenameOpen] = useState(false);
   const isArchived = (conversation as any).isArchived === true;
+  const isWaiting = conversation.awaitingHumanReply === true;
   const alreadyUnread = (conversation.unreadCount ?? 0) > 0;
 
   const { data: tags = [], isLoading } = useQuery({
@@ -218,6 +222,28 @@ export function ConversationContextMenu({
     }
   };
 
+  const toggleWaiting = async () => {
+    setSettingWaiting(true);
+    try {
+      await inboxService.setWaiting(conversation.id, !isWaiting);
+      toast.success(
+        isWaiting ? 'Retirada do esperando' : 'Colocada no esperando',
+      );
+      invalidate();
+      queryClient.invalidateQueries({ queryKey: ['conversation-tab-counts'] });
+      onClose();
+    } catch (err: any) {
+      toast.error(
+        err?.response?.data?.message ||
+          (isWaiting
+            ? 'Erro ao retirar do esperando'
+            : 'Erro ao colocar no esperando'),
+      );
+    } finally {
+      setSettingWaiting(false);
+    }
+  };
+
   const addToPipeline = async (pipelineId: string, pipelineName: string) => {
     setPendingPipelineId(pipelineId);
     try {
@@ -344,6 +370,22 @@ export function ConversationContextMenu({
               <Mail className="h-3.5 w-3.5 shrink-0 text-zinc-500 dark:text-zinc-400" />
             )}
             <span className="flex-1">Marcar como não-lida</span>
+          </button>
+          <button
+            onClick={toggleWaiting}
+            disabled={settingWaiting}
+            className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left text-[13px] text-zinc-700 transition-colors hover:bg-zinc-50 disabled:opacity-60 dark:text-zinc-300 dark:hover:bg-zinc-800/60"
+          >
+            {settingWaiting ? (
+              <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-zinc-400" />
+            ) : isWaiting ? (
+              <CircleCheck className="h-3.5 w-3.5 shrink-0 text-zinc-500 dark:text-zinc-400" />
+            ) : (
+              <Clock className="h-3.5 w-3.5 shrink-0 text-zinc-500 dark:text-zinc-400" />
+            )}
+            <span className="flex-1">
+              {isWaiting ? 'Retirar do esperando' : 'Colocar no esperando'}
+            </span>
           </button>
           <button
             onClick={toggleArchive}
