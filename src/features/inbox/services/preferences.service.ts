@@ -20,6 +20,16 @@ export interface InboxPreferences {
   selectedProjectStatus?: string;
   /** "Meus projetos" — só grupos cujo responsável de projeto sou eu. */
   mineProjects?: boolean;
+  /** Filtro de status da conversa (PENDING/OPEN/WAITING/CLOSED). '' = todos. */
+  selectedStatus?: string;
+  /** Filtro por atendente atribuído. Tem precedência sobre o scope MINE.
+   *  null/undefined = sem filtro; 'MINE' resolvido pelo componente. */
+  selectedAssignedToId?: string | null;
+  /** Preset de intervalo de data: ALL | TODAY | 7D | 30D | RANGE. */
+  dateRange?: string;
+  /** Datas do preset RANGE (YYYY-MM-DD dos <input type="date">). */
+  dateFrom?: string | null;
+  dateTo?: string | null;
 }
 
 export interface UserPreferences {

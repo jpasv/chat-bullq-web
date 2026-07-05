@@ -1,6 +1,26 @@
 import { api } from '@/lib/api';
 import type { ProjectSummary } from '@/features/projects/services/projects.service';
 
+/** Origem (scheme://host:port) da API, derivada do baseURL do client. */
+function apiOrigin(): string {
+  try {
+    return new URL(api.defaults.baseURL || '').origin;
+  } catch {
+    return typeof window !== 'undefined' ? window.location.origin : '';
+  }
+}
+
+/**
+ * Torna absoluta uma URL de mídia servida pela API. URLs já absolutas passam
+ * direto; caminhos relativos ("/api/v1/uploads/...") são resolvidos contra a
+ * origem da API — necessário porque o <audio>/<img> carrega do host da página
+ * (web), não da API, quando a URL não tem host.
+ */
+export function toAbsoluteApiUrl(url: string | undefined): string | undefined {
+  if (!url || /^https?:\/\//i.test(url)) return url;
+  return url.startsWith('/') ? `${apiOrigin()}${url}` : url;
+}
+
 export interface TagRef {
   id: string;
   name: string;
@@ -51,6 +71,8 @@ export interface Conversation {
   isGroup: boolean;
   isArchived?: boolean;
   archivedAt?: string | null;
+  /** true = aguardando resposta humana (aba "Esperando"). */
+  awaitingHumanReply?: boolean;
   lastMessageAt: string | null;
   createdAt: string;
   aiEnabled?: boolean | null;
@@ -107,6 +129,8 @@ export interface MessageMetadata {
   isEcho?: boolean;
   replyTo?: ReplyContext | null;
   transcription?: TranscriptionResult | null;
+  /** URL de playback (AAC/M4A) cacheada — tocável em qualquer navegador. */
+  playback?: { url: string; mimeType?: string } | null;
   rawPayload?: any;
   [key: string]: any;
 }
@@ -326,9 +350,35 @@ export const inboxService = {
     return data.data;
   },
 
+  /** Move a conversa entre as abas Esperando / Caixa de entrada.
+   *  waiting=true → "Colocar no esperando"; false → "Retirar do esperando". */
+  async setWaiting(conversationId: string, waiting: boolean): Promise<Conversation> {
+    const { data } = await api.post(
+      `/conversations/${conversationId}/${waiting ? 'waiting' : 'unwaiting'}`,
+    );
+    return data.data;
+  },
+
   async resolveMediaUrl(messageId: string): Promise<{ url: string; mimeType?: string }> {
     const { data } = await api.get(`/messages/${messageId}/media`);
-    return data.data;
+    const result = data.data as { url: string; mimeType?: string };
+    return { ...result, url: toAbsoluteApiUrl(result.url) ?? result.url };
+  },
+
+  /**
+   * URL de playback (AAC/M4A) tocável em qualquer navegador. As voice notes do
+   * WhatsApp são OGG/Opus, que o Safari/iOS não decodifica; o backend transcoda
+   * pra M4A na primeira chamada e cacheia. Usada pelo player em vez do mediaUrl
+   * cru.
+   *
+   * Se a URL vier relativa (APP_URL não configurado no servidor) resolvemos
+   * contra a origem da própria API que o client já conhece — o <audio> precisa
+   * de URL absoluta senão o browser tenta baixar do host do web → 404.
+   */
+  async getPlaybackUrl(messageId: string): Promise<{ url: string; mimeType?: string }> {
+    const { data } = await api.get(`/messages/${messageId}/playback`);
+    const result = data.data as { url: string; mimeType?: string };
+    return { ...result, url: toAbsoluteApiUrl(result.url) ?? result.url };
   },
 
   async transcribeAudio(messageId: string, force = false): Promise<TranscriptionResult> {

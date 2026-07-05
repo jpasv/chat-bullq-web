@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Play, Pause, Loader2, Sparkles, ChevronDown, Check } from 'lucide-react';
 import { Popover, PopoverButton, PopoverPanel } from '@headlessui/react';
-import { inboxService, type Message, type TranscriptionResult } from '../services/inbox.service';
+import { inboxService, toAbsoluteApiUrl, type Message, type TranscriptionResult } from '../services/inbox.service';
 
 const SPEEDS = [1, 1.25, 1.5, 1.75, 2] as const;
 
@@ -32,28 +32,36 @@ export function AudioMessagePlayer({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Inbound WhatsApp audios arrive with no playable URL — the webhook only
-  // carries an encrypted .enc CDN link. We hit the backend to resolve (and
-  // cache) a decrypted URL on first play. Outbound audios already have
-  // content.mediaUrl pointing to our own upload.
-  const initialMediaUrl = message.content?.mediaUrl as string | undefined;
-  const [resolvedUrl, setResolvedUrl] = useState<string | undefined>(initialMediaUrl);
+  // The panel always plays a transcoded AAC/M4A rendition, never the raw
+  // OGG/Opus that WhatsApp voice notes use — Safari/iOS can't decode Opus, so
+  // the <audio> element loads the header but stays silent. We resolve (and
+  // cache, server-side) that M4A on first play. If a previous play already
+  // cached it, the socket delivers metadata.playback.url and we seed from it.
+  const cachedPlaybackUrl = toAbsoluteApiUrl(
+    message.metadata?.playback?.url as string | undefined,
+  );
+  const [resolvedUrl, setResolvedUrl] = useState<string | undefined>(cachedPlaybackUrl);
   const [resolving, setResolving] = useState(false);
   const mediaUrl = resolvedUrl;
 
   useEffect(() => {
-    setResolvedUrl(message.content?.mediaUrl);
-  }, [message.content?.mediaUrl]);
+    const cached = toAbsoluteApiUrl(message.metadata?.playback?.url as string | undefined);
+    if (cached) setResolvedUrl(cached);
+  }, [message.metadata?.playback?.url]);
 
   const ensureResolved = async (): Promise<string | null> => {
     if (resolvedUrl) return resolvedUrl;
     setResolving(true);
     try {
-      const { url } = await inboxService.resolveMediaUrl(message.id);
+      const { url } = await inboxService.getPlaybackUrl(message.id);
       setResolvedUrl(url);
       return url;
     } catch (err: any) {
-      setError(err?.message || 'Não foi possível carregar o áudio');
+      setError(
+        err?.response?.data?.message ||
+          err?.message ||
+          'Não foi possível carregar o áudio',
+      );
       return null;
     } finally {
       setResolving(false);
@@ -150,10 +158,16 @@ export function AudioMessagePlayer({
     }
   };
 
-  // Only bail out if there's no way at all to resolve the media — i.e., the
-  // message has neither a cached URL nor an external id the backend could use.
+  // Only bail out if there's no way at all to produce a playback rendition —
+  // i.e., no cached playback URL and no source the backend could transcode
+  // from (raw mediaUrl/mediaId on the message, or an external id to resolve).
   // Otherwise we render the player and lazy-resolve on first play.
-  if (!mediaUrl && !message.externalId) {
+  const hasSource =
+    !!mediaUrl ||
+    !!message.content?.mediaUrl ||
+    !!message.content?.mediaId ||
+    !!message.externalId;
+  if (!hasSource) {
     return (
       <div className={`rounded-2xl px-4 py-2.5 ${colorBubble}`}>
         <p className="text-sm italic opacity-70">🎵 Áudio indisponível</p>
