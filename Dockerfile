@@ -3,8 +3,8 @@
 FROM node:20-alpine AS deps
 WORKDIR /app
 ENV NODE_ENV=development
-COPY package.json yarn.lock ./
-RUN corepack enable && yarn install --frozen-lockfile --production=false
+COPY package.json package-lock.json ./
+RUN npm ci --include=dev
 
 FROM node:20-alpine AS builder
 WORKDIR /app
@@ -14,7 +14,7 @@ ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
 ENV NEXT_TELEMETRY_DISABLED=1
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
-RUN corepack enable && yarn build
+RUN npm run build
 
 FROM node:20-alpine AS runner
 RUN apk add --no-cache curl tini
