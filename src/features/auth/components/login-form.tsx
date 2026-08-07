@@ -47,7 +47,7 @@ export function LoginForm() {
         <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-primary">
           <MessageSquare className="h-6 w-6 text-primary-foreground" />
         </div>
-        <h1 className="text-2xl font-bold tracking-tight">Chat BullQ</h1>
+        <h1 className="text-2xl font-bold tracking-tight">Chat Conect</h1>
         <p className="text-sm text-muted-foreground">
           Entre na sua conta para acessar o painel
         </p>

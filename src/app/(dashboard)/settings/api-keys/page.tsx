@@ -188,9 +188,10 @@ export default function SettingsApiKeysPage() {
               <div className="rounded-md border border-zinc-200 bg-zinc-50 p-3 dark:border-zinc-800 dark:bg-zinc-800/50">
                 <p className="text-xs font-medium text-zinc-700 dark:text-zinc-300">Conectar ao Claude Code (MCP)</p>
                 <pre className="mt-2 overflow-x-auto rounded bg-zinc-900 p-2 font-mono text-[11px] leading-relaxed text-zinc-100">
-{`claude mcp add chat-bullq \\
-  -e CHAT_BULLQ_API_KEY=${createdKey.rawKey} \\
-  -- node /path/to/chat-bullq-mcp/dist/index.js`}
+{`claude mcp add chat-conect \\
+  -e CHAT_CONECT_API_KEY=${createdKey.rawKey} \\
+  -e CHAT_CONECT_BASE_URL=https://api.chat.bravy.com.br \\
+  -- node /path/to/chat-conect-mcp/dist/index.js --stdio`}
                 </pre>
               </div>
             </div>
