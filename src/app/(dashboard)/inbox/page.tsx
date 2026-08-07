@@ -172,7 +172,7 @@ export default function InboxPage() {
             <MessageSquare className="h-10 w-10 text-zinc-300 dark:text-zinc-600" />
           </div>
           <h2 className="mt-4 text-lg font-semibold text-zinc-700 dark:text-zinc-300">
-            Chat BullQ
+            Chat Conect
           </h2>
           <p className="mt-1 text-sm text-zinc-400 dark:text-zinc-500">
             Selecione uma conversa para começar
