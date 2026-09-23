@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import Link from 'next/link';
 import { ExternalLink, Eye, EyeOff, MessageCircle, Trash2, ImageOff } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -48,6 +49,7 @@ interface Props {
 
 export function CommentCard({ comment, children, onHide, onDelete, onOpenDm, canDelete, busy }: Props) {
   const deleted = comment.status === 'DELETED';
+  const [thumbBroken, setThumbBroken] = useState(false);
   return (
     <article
       className={cn(
@@ -63,11 +65,16 @@ export function CommentCard({ comment, children, onHide, onDelete, onOpenDm, can
           className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-zinc-100 dark:bg-zinc-800"
           title={comment.mediaCaption ?? 'Post'}
         >
-          {comment.mediaThumbnailUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={comment.mediaThumbnailUrl} alt="" className="h-full w-full object-cover" />
-          ) : (
+          {!comment.mediaThumbnailUrl || thumbBroken ? (
             <ImageOff className="h-5 w-5 text-zinc-400" />
+          ) : (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={comment.mediaThumbnailUrl}
+              alt=""
+              className="h-full w-full object-cover"
+              onError={() => setThumbBroken(true)}
+            />
           )}
         </a>
 

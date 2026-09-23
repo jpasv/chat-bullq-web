@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient, type InfiniteData } from '@tanstack/react-query';
 import { MessageSquareText, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useOrgId } from '@/hooks/use-org-query-key';
@@ -9,7 +9,13 @@ import { useAuthStore } from '@/stores/auth-store';
 import { channelsService } from '@/features/channels/services/channels.service';
 import { useComments, COMMENTS_QUERY_KEY } from '../hooks/use-comments';
 import { useCommentsSocket } from '../hooks/use-comments-socket';
-import { commentsService, type CommentsFilters as ApiFilters, type SocialComment } from '../services/comments.service';
+import {
+  commentsService,
+  type CommentsFilters as ApiFilters,
+  type CommentsPage,
+  type SocialComment,
+  type SocialCommentStatus,
+} from '../services/comments.service';
 import { CommentsFilters, type CommentsFilterState } from './comments-filters';
 import { CommentCard } from './comment-card';
 import { CommentReplyBox } from './comment-reply-box';
@@ -53,8 +59,23 @@ export function CommentList() {
   });
   const hideMutation = useMutation({
     mutationFn: ({ id, hidden }: { id: string; hidden: boolean }) => commentsService.hide(id, hidden),
-    onSuccess: (_d, v) => { toast.success(v.hidden ? 'Comentário oculto' : 'Comentário visível'); invalidate(); },
-    onError: (e: Error) => toast.error(e.message),
+    onMutate: async ({ id, hidden }) => {
+      await queryClient.cancelQueries({ queryKey: [COMMENTS_QUERY_KEY] });
+      const snapshots = queryClient.getQueriesData<InfiniteData<CommentsPage>>({ queryKey: [COMMENTS_QUERY_KEY] });
+      const status: SocialCommentStatus = hidden ? 'HIDDEN' : 'VISIBLE';
+      const patch = (c: SocialComment): SocialComment =>
+        c.id === id ? { ...c, status } : { ...c, replies: c.replies.map((r) => (r.id === id ? { ...r, status } : r)) };
+      queryClient.setQueriesData<InfiniteData<CommentsPage>>({ queryKey: [COMMENTS_QUERY_KEY] }, (old) =>
+        old ? { ...old, pages: old.pages.map((p) => ({ ...p, items: p.items.map(patch) })) } : old,
+      );
+      return { snapshots };
+    },
+    onError: (e: Error, _v, ctx) => {
+      ctx?.snapshots.forEach(([key, data]) => queryClient.setQueryData(key, data));
+      toast.error(e.message);
+    },
+    onSuccess: (_d, v) => toast.success(v.hidden ? 'Comentário oculto' : 'Comentário visível'),
+    onSettled: () => invalidate(),
   });
   const deleteMutation = useMutation({
     mutationFn: (id: string) => commentsService.remove(id),
