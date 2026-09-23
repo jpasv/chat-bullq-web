@@ -1,15 +1,18 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { MessageSquareText, Loader2 } from 'lucide-react';
+import { toast } from 'sonner';
 import { useOrgId } from '@/hooks/use-org-query-key';
+import { useAuthStore } from '@/stores/auth-store';
 import { channelsService } from '@/features/channels/services/channels.service';
-import { useComments } from '../hooks/use-comments';
+import { useComments, COMMENTS_QUERY_KEY } from '../hooks/use-comments';
 import { useCommentsSocket } from '../hooks/use-comments-socket';
-import type { CommentsFilters as ApiFilters } from '../services/comments.service';
+import { commentsService, type CommentsFilters as ApiFilters } from '../services/comments.service';
 import { CommentsFilters, type CommentsFilterState } from './comments-filters';
 import { CommentCard } from './comment-card';
+import { CommentReplyBox } from './comment-reply-box';
 
 function toApiFilters(state: CommentsFilterState): ApiFilters {
   const f: ApiFilters = {};
@@ -35,6 +38,31 @@ export function CommentList() {
   const apiFilters = useMemo(() => toApiFilters(filters), [filters]);
   const { data, isLoading, hasNextPage, fetchNextPage, isFetchingNextPage } = useComments(apiFilters);
   const items = data?.pages.flatMap((p) => p.items) ?? [];
+
+  const queryClient = useQueryClient();
+  const role = useAuthStore((s) => s.organizations.find((o) => o.id === s.activeOrgId)?.role);
+  const canDelete = role === 'OWNER' || role === 'ADMIN';
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: [COMMENTS_QUERY_KEY] });
+
+  const replyMutation = useMutation({
+    mutationFn: ({ id, text }: { id: string; text: string }) => commentsService.reply(id, text),
+    onSuccess: () => { toast.success('Resposta publicada'); invalidate(); },
+    onError: (e: Error) => toast.error(e.message),
+  });
+  const hideMutation = useMutation({
+    mutationFn: ({ id, hidden }: { id: string; hidden: boolean }) => commentsService.hide(id, hidden),
+    onSuccess: (_d, v) => { toast.success(v.hidden ? 'Comentário oculto' : 'Comentário visível'); invalidate(); },
+    onError: (e: Error) => toast.error(e.message),
+  });
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => commentsService.remove(id),
+    onSuccess: () => { toast.success('Comentário deletado'); invalidate(); },
+    onError: (e: Error) => toast.error(e.message),
+  });
+  const busyId = replyMutation.isPending ? replyMutation.variables?.id
+    : hideMutation.isPending ? hideMutation.variables?.id
+    : deleteMutation.isPending ? deleteMutation.variables
+    : undefined;
 
   return (
     <div className="mx-auto w-full max-w-4xl p-6">
@@ -64,7 +92,19 @@ export function CommentList() {
       ) : (
         <div className="mt-5 space-y-3">
           {items.map((c) => (
-            <CommentCard key={c.id} comment={c} />
+            <CommentCard
+              key={c.id}
+              comment={c}
+              busy={busyId === c.id}
+              canDelete={canDelete}
+              onHide={(hidden) => hideMutation.mutate({ id: c.id, hidden })}
+              onDelete={() => deleteMutation.mutate(c.id)}
+            >
+              <CommentReplyBox
+                onReply={(text) => replyMutation.mutateAsync({ id: c.id, text }).then(() => undefined)}
+                onSuggest={() => commentsService.suggest(c.id)}
+              />
+            </CommentCard>
           ))}
           {hasNextPage && (
             <button

@@ -1,6 +1,6 @@
 'use client';
 
-import { ExternalLink, EyeOff, Trash2, ImageOff } from 'lucide-react';
+import { ExternalLink, Eye, EyeOff, Trash2, ImageOff } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { SocialComment } from '../services/comments.service';
 
@@ -38,9 +38,13 @@ interface Props {
   comment: SocialComment;
   /** Slot para ações e caixa de resposta (Task 11). */
   children?: React.ReactNode;
+  onHide?: (hidden: boolean) => void;
+  onDelete?: () => void;
+  canDelete?: boolean;
+  busy?: boolean;
 }
 
-export function CommentCard({ comment, children }: Props) {
+export function CommentCard({ comment, children, onHide, onDelete, canDelete, busy }: Props) {
   const deleted = comment.status === 'DELETED';
   return (
     <article
@@ -95,6 +99,34 @@ export function CommentCard({ comment, children }: Props) {
             {comment.text}
           </p>
 
+          {!deleted && (
+            <div className="mt-2 flex items-center gap-3 text-xs">
+              {onHide && (
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => onHide(comment.status !== 'HIDDEN')}
+                  className="inline-flex items-center gap-1 text-zinc-500 hover:text-amber-600 disabled:opacity-50"
+                >
+                  {comment.status === 'HIDDEN' ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
+                  {comment.status === 'HIDDEN' ? 'Desocultar' : 'Ocultar'}
+                </button>
+              )}
+              {canDelete && onDelete && (
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => {
+                    if (window.confirm('Deletar este comentário no Instagram? Não dá pra desfazer.')) onDelete();
+                  }}
+                  className="inline-flex items-center gap-1 text-zinc-500 hover:text-red-600 disabled:opacity-50"
+                >
+                  <Trash2 className="h-3.5 w-3.5" /> Deletar
+                </button>
+              )}
+            </div>
+          )}
+
           {comment.replies.length > 0 && (
             <ul className="mt-3 space-y-2 border-l-2 border-zinc-200 pl-3 dark:border-zinc-700">
               {comment.replies.map((r) => (
@@ -110,7 +142,7 @@ export function CommentCard({ comment, children }: Props) {
             </ul>
           )}
 
-          {children}
+          {!deleted && children}
         </div>
       </div>
     </article>
