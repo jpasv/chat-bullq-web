@@ -44,6 +44,9 @@ api.interceptors.response.use(
       }
     }
     const message = error.response?.data?.message || error.message;
-    return Promise.reject(new Error(Array.isArray(message) ? message[0] : message));
+    const wrapped = new Error(Array.isArray(message) ? message[0] : message) as Error & { status?: number; body?: any };
+    wrapped.status = error.response?.status;
+    wrapped.body = error.response?.data;
+    return Promise.reject(wrapped);
   },
 );
