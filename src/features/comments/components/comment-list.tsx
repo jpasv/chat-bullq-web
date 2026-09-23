@@ -59,10 +59,10 @@ export function CommentList() {
     onSuccess: () => { toast.success('Comentário deletado'); invalidate(); },
     onError: (e: Error) => toast.error(e.message),
   });
-  const busyId = replyMutation.isPending ? replyMutation.variables?.id
-    : hideMutation.isPending ? hideMutation.variables?.id
-    : deleteMutation.isPending ? deleteMutation.variables
-    : undefined;
+  const busyIds = new Set<string>();
+  if (replyMutation.isPending && replyMutation.variables) busyIds.add(replyMutation.variables.id);
+  if (hideMutation.isPending && hideMutation.variables) busyIds.add(hideMutation.variables.id);
+  if (deleteMutation.isPending && deleteMutation.variables) busyIds.add(deleteMutation.variables);
 
   return (
     <div className="mx-auto w-full max-w-4xl p-6">
@@ -95,7 +95,7 @@ export function CommentList() {
             <CommentCard
               key={c.id}
               comment={c}
-              busy={busyId === c.id}
+              busy={busyIds.has(c.id)}
               canDelete={canDelete}
               onHide={(hidden) => hideMutation.mutate({ id: c.id, hidden })}
               onDelete={() => deleteMutation.mutate(c.id)}

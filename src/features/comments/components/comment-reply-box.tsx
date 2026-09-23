@@ -37,6 +37,8 @@ export function CommentReplyBox({ onReply, onSuggest }: Props) {
     try {
       await onReply(value);
       setText('');
+    } catch {
+      // erro já exibido pelo toast da mutation; mantém o texto pra tentar de novo
     } finally {
       setSending(false);
     }
