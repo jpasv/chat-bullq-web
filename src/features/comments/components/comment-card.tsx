@@ -1,6 +1,7 @@
 'use client';
 
-import { ExternalLink, Eye, EyeOff, Trash2, ImageOff } from 'lucide-react';
+import Link from 'next/link';
+import { ExternalLink, Eye, EyeOff, MessageCircle, Trash2, ImageOff } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { SocialComment } from '../services/comments.service';
 
@@ -40,11 +41,12 @@ interface Props {
   children?: React.ReactNode;
   onHide?: (hidden: boolean) => void;
   onDelete?: () => void;
+  onOpenDm?: () => void;
   canDelete?: boolean;
   busy?: boolean;
 }
 
-export function CommentCard({ comment, children, onHide, onDelete, canDelete, busy }: Props) {
+export function CommentCard({ comment, children, onHide, onDelete, onOpenDm, canDelete, busy }: Props) {
   const deleted = comment.status === 'DELETED';
   return (
     <article
@@ -101,6 +103,20 @@ export function CommentCard({ comment, children, onHide, onDelete, canDelete, bu
 
           {!deleted && (
             <div className="mt-2 flex items-center gap-3 text-xs">
+              {!comment.isFromPage && (
+                comment.privateReplyConversationId ? (
+                  <Link
+                    href={`/inbox?conversationId=${comment.privateReplyConversationId}`}
+                    className="inline-flex items-center gap-1 text-primary hover:underline"
+                  >
+                    <MessageCircle className="h-3.5 w-3.5" /> Ver DM
+                  </Link>
+                ) : onOpenDm ? (
+                  <button type="button" disabled={busy} onClick={onOpenDm} className="inline-flex items-center gap-1 text-zinc-500 hover:text-primary disabled:opacity-50">
+                    <MessageCircle className="h-3.5 w-3.5" /> Abrir DM
+                  </button>
+                ) : null
+              )}
               {onHide && (
                 <button
                   type="button"

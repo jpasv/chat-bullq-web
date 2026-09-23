@@ -9,10 +9,11 @@ import { useAuthStore } from '@/stores/auth-store';
 import { channelsService } from '@/features/channels/services/channels.service';
 import { useComments, COMMENTS_QUERY_KEY } from '../hooks/use-comments';
 import { useCommentsSocket } from '../hooks/use-comments-socket';
-import { commentsService, type CommentsFilters as ApiFilters } from '../services/comments.service';
+import { commentsService, type CommentsFilters as ApiFilters, type SocialComment } from '../services/comments.service';
 import { CommentsFilters, type CommentsFilterState } from './comments-filters';
 import { CommentCard } from './comment-card';
 import { CommentReplyBox } from './comment-reply-box';
+import { PrivateReplyDialog } from './private-reply-dialog';
 
 function toApiFilters(state: CommentsFilterState): ApiFilters {
   const f: ApiFilters = {};
@@ -26,6 +27,7 @@ function toApiFilters(state: CommentsFilterState): ApiFilters {
 export function CommentList() {
   const orgId = useOrgId();
   const [filters, setFilters] = useState<CommentsFilterState>({ channelId: '', view: 'all' });
+  const [dmTarget, setDmTarget] = useState<SocialComment | null>(null);
   useCommentsSocket();
 
   const { data: channels = [] } = useQuery({
@@ -99,6 +101,7 @@ export function CommentList() {
               canDelete={canDelete}
               onHide={(hidden) => hideMutation.mutate({ id: c.id, hidden })}
               onDelete={() => deleteMutation.mutate(c.id)}
+              onOpenDm={() => setDmTarget(c)}
             >
               <CommentReplyBox
                 onReply={(text) => replyMutation.mutateAsync({ id: c.id, text }).then(() => undefined)}
@@ -117,6 +120,8 @@ export function CommentList() {
           )}
         </div>
       )}
+
+      <PrivateReplyDialog open={!!dmTarget} comment={dmTarget} onClose={() => setDmTarget(null)} />
     </div>
   );
 }
