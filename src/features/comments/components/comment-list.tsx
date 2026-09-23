@@ -88,6 +88,7 @@ export function CommentList() {
   if (deleteMutation.isPending && deleteMutation.variables) busyIds.add(deleteMutation.variables);
 
   return (
+    <div className="h-full min-h-0 overflow-y-auto">
     <div className="mx-auto w-full max-w-4xl p-6">
       <div className="flex items-center gap-2">
         <MessageSquareText className="h-6 w-6 text-primary" />
@@ -143,6 +144,7 @@ export function CommentList() {
       )}
 
       <PrivateReplyDialog open={!!dmTarget} comment={dmTarget} onClose={() => setDmTarget(null)} />
+    </div>
     </div>
   );
 }
