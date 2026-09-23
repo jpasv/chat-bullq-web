@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useQueryClient } from '@tanstack/react-query';
 import { X, Loader2, Send } from 'lucide-react';
@@ -20,11 +20,19 @@ export function PrivateReplyDialog({ open, comment, onClose }: Props) {
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
 
+  useEffect(() => {
+    setText('');
+  }, [comment?.id]);
+
   if (!open || !comment) return null;
 
-  const goToInbox = (conversationId: string) => {
-    onClose();
+  const handleClose = () => {
     setText('');
+    onClose();
+  };
+
+  const goToInbox = (conversationId: string) => {
+    handleClose();
     router.push(`/inbox?conversationId=${conversationId}`);
   };
 
@@ -56,7 +64,7 @@ export function PrivateReplyDialog({ open, comment, onClose }: Props) {
           <h3 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100">
             Abrir DM com @{comment.authorUsername ?? comment.authorExternalId}
           </h3>
-          <button onClick={onClose} className="rounded p-1 text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800">
+          <button onClick={handleClose} disabled={sending} className="rounded p-1 text-zinc-400 hover:bg-zinc-100 disabled:opacity-50 dark:hover:bg-zinc-800">
             <X className="h-4 w-4" />
           </button>
         </div>
@@ -77,7 +85,7 @@ export function PrivateReplyDialog({ open, comment, onClose }: Props) {
           />
         </div>
         <div className="flex justify-end gap-2 border-t border-zinc-200 px-6 py-4 dark:border-zinc-800">
-          <button onClick={onClose} className="rounded-md px-3 py-1.5 text-sm text-zinc-600 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800">
+          <button onClick={handleClose} disabled={sending} className="rounded-md px-3 py-1.5 text-sm text-zinc-600 hover:bg-zinc-100 disabled:opacity-50 dark:text-zinc-300 dark:hover:bg-zinc-800">
             Cancelar
           </button>
           <button
