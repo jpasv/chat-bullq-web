@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { Dialog as AccessibleDialog, DialogPanel, DialogTitle, Description } from '@headlessui/react';
 import { Loader2, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { aiAgentsService, AiAgent, DEFAULT_AGENT_MODEL } from '../services/ai-agents.service';
@@ -14,24 +15,22 @@ export const secondaryBtn =
   'inline-flex items-center justify-center gap-1.5 rounded-md border border-zinc-300 bg-white px-4 py-2 text-sm font-medium text-zinc-800 hover:bg-zinc-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:opacity-50 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-100 dark:hover:bg-zinc-800';
 
 export function Dialog({ title, description, onClose, children }: { title: string; description?: string; onClose: () => void; children: React.ReactNode }) {
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onMouseDown={e => { if (e.target === e.currentTarget) onClose(); }}>
-      <div role="dialog" aria-modal="true" aria-labelledby="studio-dialog-title" className="w-full max-w-md rounded-xl border border-zinc-300 bg-white p-6 shadow-xl dark:border-zinc-700 dark:bg-zinc-900">
-        <div className="mb-4 flex items-start justify-between gap-4">
-          <div>
-            <h2 id="studio-dialog-title" className="text-base font-semibold text-zinc-900 dark:text-zinc-50">{title}</h2>
-            {description && <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-300">{description}</p>}
+    <AccessibleDialog open onClose={onClose} className="relative z-50">
+      <div className="fixed inset-0 bg-black/50" aria-hidden="true" />
+      <div className="fixed inset-0 flex items-center justify-center overflow-y-auto p-4">
+        <DialogPanel className="w-full max-w-md rounded-xl border border-zinc-300 bg-white p-6 shadow-xl dark:border-zinc-700 dark:bg-zinc-900">
+          <div className="mb-4 flex items-start justify-between gap-4">
+            <div>
+              <DialogTitle className="text-base font-semibold text-zinc-900 dark:text-zinc-50">{title}</DialogTitle>
+              {description && <Description className="mt-1 text-sm text-zinc-600 dark:text-zinc-300">{description}</Description>}
+            </div>
+            <button type="button" onClick={onClose} aria-label="Fechar" className="rounded p-1 text-zinc-600 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800"><X className="h-4 w-4" /></button>
           </div>
-          <button type="button" onClick={onClose} aria-label="Fechar" className="rounded p-1 text-zinc-600 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800"><X className="h-4 w-4" /></button>
-        </div>
-        {children}
+          {children}
+        </DialogPanel>
       </div>
-    </div>
+    </AccessibleDialog>
   );
 }
 

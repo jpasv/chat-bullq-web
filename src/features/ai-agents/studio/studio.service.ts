@@ -20,8 +20,8 @@ export const studioService = {
     const { data } = await api.get('/ai-agents/mention-options');
     return data.data ?? data;
   },
-  async testChat(agentId: string, messages: TestChatTurn[], useDraft: boolean, sessionId: string): Promise<TestChatResult> {
-    const { data } = await api.post(`/ai-agents/${agentId}/test-chat`, { messages, useDraft, sessionId }, { timeout: 120_000 });
+  async testChat(agentId: string, messages: TestChatTurn[], useDraft: boolean, sessionId: string, signal?: AbortSignal): Promise<TestChatResult> {
+    const { data } = await api.post(`/ai-agents/${agentId}/test-chat`, { messages, useDraft, sessionId }, { timeout: 120_000, signal });
     return data.data ?? data;
   },
 };

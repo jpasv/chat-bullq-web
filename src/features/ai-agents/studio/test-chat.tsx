@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { ArrowRightLeft, FlaskConical, Loader2, RotateCcw, Send, Zap } from 'lucide-react';
 import { toast } from 'sonner';
 import { studioService, TestChatResult, TestChatTurn } from './studio.service';
@@ -23,23 +23,24 @@ export function TestChat({ agentId, agentName, revisionKey }: { agentId: string;
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
   const session = useRef(crypto.randomUUID());
+  const request = useRef<AbortController | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
 
-  const reset = () => { session.current = crypto.randomUUID(); setBusy(false); setInput(''); setCurrent({ id: agentId, name: agentName }); setHistory([]); setEntries([]); };
-  useEffect(() => { reset(); return () => { session.current = crypto.randomUUID(); }; }, [agentId, revisionKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  const reset = () => { request.current?.abort(); request.current = null; session.current = crypto.randomUUID(); setBusy(false); setInput(''); setCurrent({ id: agentId, name: agentName }); setHistory([]); setEntries([]); };
+  useLayoutEffect(() => { reset(); return () => { request.current?.abort(); session.current = crypto.randomUUID(); }; }, [agentId, revisionKey]); // eslint-disable-line react-hooks/exhaustive-deps
   // Chaves obrigatórias: scrollIntoView devolve Promise em navegadores novos, e o efeito não pode devolver nada.
   useEffect(() => { void endRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [entries, busy]);
 
-  const ask = async (target: { id: string; name: string }, turns: TestChatTurn[], sessionId: string, hops = 0): Promise<void> => {
-    const result = await studioService.testChat(target.id, turns, useDraft, sessionId);
-    if (session.current !== sessionId) return;
+  const ask = async (target: { id: string; name: string }, turns: TestChatTurn[], sessionId: string, signal: AbortSignal, hops = 0): Promise<void> => {
+    const result = await studioService.testChat(target.id, turns, useDraft, sessionId, signal);
+    if (signal.aborted || session.current !== sessionId) return;
     setEntries(e => [...e, { kind: 'agent', agentName: result.agent.name, result }]);
     let next = turns;
     if (result.reply) { next = [...turns, { role: 'assistant', content: result.reply }]; setHistory(next); }
     if (result.handoffTo && hops < 3) {
       setEntries(e => [...e, { kind: 'handoff', to: result.handoffTo!.name }]);
       setCurrent(result.handoffTo);
-      await ask(result.handoffTo, next, sessionId, hops + 1);
+      await ask(result.handoffTo, next, sessionId, signal, hops + 1);
     }
   };
 
@@ -50,9 +51,11 @@ export function TestChat({ agentId, agentName, revisionKey }: { agentId: string;
     setHistory(turns); setInput(''); setEntries(e => [...e, { kind: 'user', text }]);
     setBusy(true);
     const sessionId = session.current;
-    try { await ask(current, turns, sessionId); }
-    catch (err: any) { if (session.current !== sessionId) return; toast.error(err?.response?.data?.message ?? 'Não foi possível testar agora. Tente novamente.'); }
-    finally { if (session.current === sessionId) setBusy(false); }
+    const controller = new AbortController();
+    request.current = controller;
+    try { await ask(current, turns, sessionId, controller.signal); }
+    catch (err: any) { if (controller.signal.aborted || session.current !== sessionId) return; toast.error(err?.response?.data?.message ?? 'Não foi possível testar agora. Tente novamente.'); }
+    finally { if (session.current === sessionId) { request.current = null; setBusy(false); } }
   };
 
   return (

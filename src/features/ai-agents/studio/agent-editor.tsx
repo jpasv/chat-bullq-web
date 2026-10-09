@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useId, useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { BookOpen, History, Loader2, Settings2, SquarePen, Upload } from 'lucide-react';
 import { toast } from 'sonner';
@@ -156,16 +156,24 @@ export function AgentEditor({ agent, groups, options, onChanged, flow, onOpenAge
         </div>
       )}
 
-      <div className="flex gap-1 border-b border-zinc-300 px-6 dark:border-zinc-700">
+      <div role="tablist" aria-label="Configuração do agente" className="flex gap-1 border-b border-zinc-300 px-6 dark:border-zinc-700">
         {tabs.map(t => (
-          <button key={t.id} type="button" onClick={() => setTab(t.id)}
+          <button key={t.id} id={`${agent.id}-tab-${t.id}`} type="button" role="tab" aria-selected={tab === t.id} aria-controls={`${agent.id}-panel-${t.id}`} tabIndex={tab === t.id ? 0 : -1} onClick={() => setTab(t.id)}
+            onKeyDown={e => {
+              const index = tabs.findIndex(item => item.id === t.id);
+              const next = e.key === 'ArrowRight' ? (index + 1) % tabs.length : e.key === 'ArrowLeft' ? (index + tabs.length - 1) % tabs.length : e.key === 'Home' ? 0 : e.key === 'End' ? tabs.length - 1 : -1;
+              if (next < 0) return;
+              e.preventDefault();
+              setTab(tabs[next].id);
+              document.getElementById(`${agent.id}-tab-${tabs[next].id}`)?.focus();
+            }}
             className={`inline-flex items-center gap-1.5 border-b-2 px-3 py-2 text-sm ${tab === t.id ? 'border-primary font-medium text-zinc-900 dark:text-zinc-100' : 'border-transparent text-zinc-600 dark:text-zinc-300 hover:text-zinc-800'}`}>
             <t.icon className="h-4 w-4" /> {t.label}
           </button>
         ))}
       </div>
 
-      <div className="flex-1 overflow-y-auto p-6">
+      <div id={`${agent.id}-panel-${tab}`} role="tabpanel" aria-labelledby={`${agent.id}-tab-${tab}`} tabIndex={0} className="flex-1 overflow-y-auto p-6">
         {deleting && (
           <ConfirmDialog title={`Excluir o agente "${agent.name}"?`} confirmLabel="Excluir agente" onClose={() => setDeleting(false)}
             description="O agente para de atender e sai da matéria. As conversas que estavam com ele voltam para o agente inicial do número."
@@ -193,24 +201,24 @@ export function AgentEditor({ agent, groups, options, onChanged, flow, onOpenAge
 
         {tab === 'settings' && (
           <div className="max-w-xl space-y-6">
-            <Field label="Nome"><input value={form.name} onChange={e => set('name', e.target.value)} className={input} /></Field>
-            <Field label="Matéria / tese" hint="O grupo em que este agente atende.">
-              <select value={group?.id ?? ''} onChange={e => void moveToGroup(e.target.value)} className={input}>
+            <Field label="Nome">{props => (<input {...props} value={form.name} onChange={e => set('name', e.target.value)} className={input} />)}</Field>
+            <Field label="Matéria / tese" hint="O grupo em que este agente atende.">{props => (
+              <select {...props} value={group?.id ?? ''} onChange={e => void moveToGroup(e.target.value)} className={input}>
                 <option value="">Sem matéria</option>
                 {groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
               </select>
-            </Field>
-            <Field label="Modelo">
-              <select value={form.modelId} onChange={e => set('modelId', e.target.value)} className={input}>
+            )}</Field>
+            <Field label="Modelo">{props => (
+              <select {...props} value={form.modelId} onChange={e => set('modelId', e.target.value)} className={input}>
                 {CURATED_MODELS.map(m => <option key={m.id} value={m.id}>{m.label}</option>)}
               </select>
-            </Field>
-            <Field label="Tempo de espera para responder" hint="Segundos sem novas mensagens do lead antes de responder (lê tudo que chegou nesse tempo). Recomendado: 15 a 20.">
-              <input type="number" min={5} max={120} value={form.debounceSeconds} onChange={e => set('debounceSeconds', Number(e.target.value))} className={`${input} w-28`} />
-            </Field>
-            <Field label="Palavras-chave de ativação" hint="Separadas por vírgula. Ativam este agente só no início da conversa (ex.: BPC, LOAS vindo de anúncio).">
-              <input value={form.keywords} onChange={e => set('keywords', e.target.value)} placeholder="BPC, LOAS" className={input} />
-            </Field>
+            )}</Field>
+            <Field label="Tempo de espera para responder" hint="Segundos sem novas mensagens do lead antes de responder (lê tudo que chegou nesse tempo). Recomendado: 15 a 20.">{props => (
+              <input {...props} type="number" min={5} max={120} value={form.debounceSeconds} onChange={e => set('debounceSeconds', Number(e.target.value))} className={`${input} w-28`} />
+            )}</Field>
+            <Field label="Palavras-chave de ativação" hint="Separadas por vírgula. Ativam este agente só no início da conversa (ex.: BPC, LOAS vindo de anúncio).">{props => (
+              <input {...props} value={form.keywords} onChange={e => set('keywords', e.target.value)} placeholder="BPC, LOAS" className={input} />
+            )}</Field>
             <label className="flex items-center gap-2 text-sm text-zinc-800 dark:text-zinc-100">
               <input type="checkbox" checked={form.isActive} onChange={e => set('isActive', e.target.checked)} /> Agente ativo
             </label>
@@ -224,12 +232,13 @@ export function AgentEditor({ agent, groups, options, onChanged, flow, onOpenAge
 
 const input = inputCls;
 
-function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
+function Field({ label, hint, children }: { label: string; hint?: string; children: (props: { id: string; 'aria-describedby'?: string }) => React.ReactNode }) {
+  const id = useId();
   return (
     <div className="space-y-1.5">
-      <label className="text-sm font-medium text-zinc-800 dark:text-zinc-100">{label}</label>
-      {children}
-      {hint && <p className="text-xs text-zinc-600 dark:text-zinc-300">{hint}</p>}
+      <label htmlFor={id} className="text-sm font-medium text-zinc-800 dark:text-zinc-100">{label}</label>
+      {children({ id, 'aria-describedby': hint ? `${id}-hint` : undefined })}
+      {hint && <p id={`${id}-hint`} className="text-xs text-zinc-600 dark:text-zinc-300">{hint}</p>}
     </div>
   );
 }

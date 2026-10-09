@@ -170,11 +170,11 @@ export function StudioPage() {
             <button type="button" onClick={() => setDialog({ kind: 'group' })} className={primaryBtn}><FolderPlus className="h-4 w-4" /> Nova matéria</button>
           </div>
         )}
-        {selectedId && agentQ.isLoading && <Loader2 className="mx-auto mt-10 h-5 w-5 animate-spin text-zinc-500" />}
+        {selectedId && agentQ.isFetching && <p role="status" className="flex items-center justify-center gap-2 p-6"><Loader2 className="h-5 w-5 animate-spin" /> Carregando agente…</p>}
         {selectedId && agentQ.isError && <div role="alert" className="p-6 text-red-700">
-          Não foi possível carregar o agente. <button className="underline" onClick={() => void agentQ.refetch()}>Tentar de novo</button>
+          Não foi possível carregar o agente. <button type="button" disabled={agentQ.isFetching} className="underline disabled:opacity-50" onClick={() => void agentQ.refetch()}>Tentar novamente</button>
         </div>}
-        {selectedId && !agentQ.isLoading && !agentQ.isError && !agentQ.data && <p className="p-6">Agente não encontrado.</p>}
+        {selectedId && !agentQ.isFetching && !agentQ.isError && !agentQ.data && <div className="p-6"><p>Agente não encontrado.</p><button type="button" className="underline" onClick={() => void agentQ.refetch()}>Tentar novamente</button></div>}
         {selectedId && agentQ.data && (
           <AgentEditor key={agentQ.data.id} onDirtyChange={setEditorDirty}
             agent={agentQ.data} groups={groups} options={optionsQ.data ?? []} flow={flowFor(agentQ.data.id)} onOpenAgent={openAgent} onDeleted={() => { setEditorDirty(false); setSelectedId(null); refreshAll(); }} onChanged={() => { refreshAll(); void agentQ.refetch(); }} />
