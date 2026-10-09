@@ -36,11 +36,17 @@ function StatusBadge({ status }: { status: SocialComment['status'] }) {
   );
 }
 
-function Avatar({ name }: { name: string }) {
+function Avatar({ name, url }: { name: string; url: string | null }) {
+  const [broken, setBroken] = useState(false);
   const initial = name.replace(/^@/, '').charAt(0).toUpperCase() || '?';
   return (
-    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-zinc-200 text-xs font-semibold text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">
-      {initial}
+    <div className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-zinc-200 text-xs font-semibold text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">
+      {url && !broken ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={url} alt="" className="h-full w-full object-cover" onError={() => setBroken(true)} />
+      ) : (
+        initial
+      )}
     </div>
   );
 }
@@ -75,7 +81,7 @@ export function CommentCard({ comment, children, onHide, onDelete, onOpenDm, can
       )}
     >
       <div className="flex gap-3">
-        <Avatar name={author} />
+        <Avatar name={author} url={comment.authorAvatarUrl} />
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
             <span className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">{author}</span>

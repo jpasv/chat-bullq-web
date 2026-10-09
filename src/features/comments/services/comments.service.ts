@@ -13,6 +13,8 @@ export interface SocialComment {
   mediaThumbnailUrl: string | null;
   authorExternalId: string;
   authorUsername: string | null;
+  /** Foto do autor; null quando a Meta não libera (quem nunca conversou com a conta). */
+  authorAvatarUrl: string | null;
   text: string;
   status: SocialCommentStatus;
   isFromPage: boolean;
