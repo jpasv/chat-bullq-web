@@ -118,7 +118,7 @@ export function AgentsList() {
   const [editing, setEditing] = useState<AiAgent | null>(null);
   const [deptFilter, setDeptFilter] = useState<string | null>(null);
 
-  const { data: agents, isLoading } = useQuery({
+  const { data: agents, isLoading, isError, refetch } = useQuery({
     queryKey: ['ai-agents', orgId],
     queryFn: () => aiAgentsService.list(),
   });
@@ -230,6 +230,13 @@ export function AgentsList() {
         {isLoading ? (
           <div className="flex h-full items-center justify-center">
             <div className="h-10 w-10 animate-pulse rounded-full bg-zinc-200 dark:bg-zinc-800" />
+          </div>
+        ) : isError ? (
+          <div role="alert" className="col-span-full p-6 text-center text-sm text-zinc-500">
+            <p>Não foi possível carregar agentes.</p>
+            <button type="button" onClick={() => void refetch()} className="mt-2 text-primary hover:underline">
+              Tentar novamente
+            </button>
           </div>
         ) : hasAgents ? (
           <ReactFlowProvider>

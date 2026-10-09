@@ -434,6 +434,8 @@ export function ConversationList({ activeId, onSelect, viewId }: ConversationLis
   const {
     data,
     isLoading,
+    isError,
+    refetch,
     fetchNextPage,
     hasNextPage,
     isFetchingNextPage,
@@ -748,22 +750,29 @@ export function ConversationList({ activeId, onSelect, viewId }: ConversationLis
     };
   }, [on, onReconnect, queryClient]);
 
+  const reportBulkResult = useCallback((result: import('../services/inbox.service').BulkResult) => {
+    setSelectedIds(new Set(result.failed.map((failure) => failure.conversationId)));
+    const message = `${result.succeeded.length} de ${result.succeeded.length + result.failed.length} concluídas`;
+    if (result.failed.length) toast.warning(`${message}. As que falharam continuam selecionadas; tente novamente.`);
+    else toast.success(message);
+  }, []);
+
   const handleBulkAction = useCallback(
     async (action: 'close' | 'assign' | 'reopen') => {
       const ids = Array.from(selectedIds);
       if (ids.length === 0) return;
       setBulkLoading(true);
       try {
-        if (action === 'close') await inboxService.bulkClose(ids);
-        else if (action === 'assign') await inboxService.bulkAssignToMe(ids);
-        else if (action === 'reopen') await inboxService.bulkReopen(ids);
-        clearSelection();
+        const result = action === 'close' ? await inboxService.bulkClose(ids)
+          : action === 'assign' ? await inboxService.bulkAssignToMe(ids)
+          : await inboxService.bulkReopen(ids);
+        reportBulkResult(result);
         invalidateConversations();
       } finally {
         setBulkLoading(false);
       }
     },
-    [selectedIds, clearSelection, invalidateConversations],
+    [selectedIds, reportBulkResult, invalidateConversations],
   );
 
   const handleBulkSetAi = useCallback(
@@ -772,15 +781,7 @@ export function ConversationList({ activeId, onSelect, viewId }: ConversationLis
       if (ids.length === 0) return;
       setBulkLoading(true);
       try {
-        await inboxService.bulkSetAi(ids, override);
-        const label =
-          override === null
-            ? 'IA voltou ao padrão'
-            : override
-              ? 'IA forçada'
-              : 'IA pausada';
-        toast.success(`${label} em ${ids.length} conversa${ids.length > 1 ? 's' : ''}`);
-        clearSelection();
+        reportBulkResult(await inboxService.bulkSetAi(ids, override));
         invalidateConversations();
       } catch (err: any) {
         toast.error(err?.response?.data?.message || 'Erro ao alterar IA em massa');
@@ -788,7 +789,7 @@ export function ConversationList({ activeId, onSelect, viewId }: ConversationLis
         setBulkLoading(false);
       }
     },
-    [selectedIds, clearSelection, invalidateConversations],
+    [selectedIds, reportBulkResult, invalidateConversations],
   );
 
   const handleBulkEngageAi = useCallback(async () => {
@@ -796,18 +797,14 @@ export function ConversationList({ activeId, onSelect, viewId }: ConversationLis
     if (ids.length === 0) return;
     setBulkLoading(true);
     try {
-      await inboxService.bulkEngageAi(ids);
-      toast.success(
-        `IA engajada em ${ids.length} conversa${ids.length > 1 ? 's' : ''}`,
-      );
-      clearSelection();
+      reportBulkResult(await inboxService.bulkEngageAi(ids));
       invalidateConversations();
     } catch (err: any) {
       toast.error(err?.response?.data?.message || 'Erro ao engajar IA');
     } finally {
       setBulkLoading(false);
     }
-  }, [selectedIds, clearSelection, invalidateConversations]);
+  }, [selectedIds, reportBulkResult, invalidateConversations]);
 
   // Bulk: drop selected conversations into a pipeline stage. Each
   // conversation becomes a Card on (pipelineId, stageId). Uses
@@ -827,24 +824,17 @@ export function ConversationList({ activeId, onSelect, viewId }: ConversationLis
             }),
           ),
         );
-        const ok = results.filter((r) => r.status === 'fulfilled').length;
-        const failed = results.length - ok;
-        if (failed === 0) {
-          toast.success(
-            `${ok} conversa${ok > 1 ? 's' : ''} adicionada${ok > 1 ? 's' : ''} ao pipeline`,
-          );
-        } else if (ok === 0) {
-          toast.error(`Falha ao adicionar (${failed} ${failed > 1 ? 'erros' : 'erro'})`);
-        } else {
-          toast.warning(`${ok} adicionadas, ${failed} falharam`);
-        }
-        clearSelection();
+        reportBulkResult({
+          succeeded: ids.filter((_, index) => results[index].status === 'fulfilled'),
+          failed: results.flatMap((result, index) => result.status === 'rejected'
+            ? [{ conversationId: ids[index], error: result.reason }] : []),
+        });
         invalidateConversations();
       } finally {
         setBulkLoading(false);
       }
     },
-    [selectedIds, clearSelection, invalidateConversations],
+    [selectedIds, reportBulkResult, invalidateConversations],
   );
 
   // Bulk: pin the selected conversations into a brand-new inbox view.
@@ -1668,6 +1658,13 @@ export function ConversationList({ activeId, onSelect, viewId }: ConversationLis
               </div>
             </div>
           ))
+        ) : isError ? (
+          <div role="alert" className="col-span-full p-6 text-center text-sm text-zinc-500">
+            <p>Não foi possível carregar conversas.</p>
+            <button type="button" onClick={() => void refetch()} className="mt-2 text-primary hover:underline">
+              Tentar novamente
+            </button>
+          </div>
         ) : conversations.length === 0 ? (
           <div className="flex flex-col items-center justify-center px-6 py-16 text-center">
             <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-zinc-100 dark:bg-zinc-800">

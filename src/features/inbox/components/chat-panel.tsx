@@ -451,7 +451,7 @@ export function ChatPanel({
   // classList) pra sobreviver aos re-renders do realtime durante o destaque.
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
 
-  const { data, isLoading, isFetching } = useQuery({
+  const { data, isLoading, isFetching, isError, refetch } = useQuery({
     queryKey: ['messages', conversation.id],
     queryFn: () => inboxService.getMessages(conversation.id, 1, limitRef.current),
     // Defenses against socket gaps: refetch when the tab regains focus
@@ -894,6 +894,13 @@ export function ChatPanel({
         {isLoading ? (
           <div className="flex h-full items-center justify-center">
             <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+          </div>
+        ) : isError ? (
+          <div role="alert" className="col-span-full p-6 text-center text-sm text-zinc-500">
+            <p>Não foi possível carregar mensagens.</p>
+            <button type="button" onClick={() => void refetch()} className="mt-2 text-primary hover:underline">
+              Tentar novamente
+            </button>
           </div>
         ) : messages.length === 0 ? (
           <div className="flex h-full items-center justify-center text-sm text-zinc-400">

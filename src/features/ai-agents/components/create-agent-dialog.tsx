@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { X } from 'lucide-react';
 import { toast } from 'sonner';
+import { z } from 'zod';
 import {
   aiAgentsService,
   CURATED_MODELS,
@@ -18,6 +19,11 @@ interface CreateAgentDialogProps {
   onClose: () => void;
   onCreated: () => void;
 }
+
+const agentSchema = z.object({
+  name: z.string().trim().min(2, 'O nome deve ter pelo menos 2 caracteres').max(80, 'O nome deve ter no máximo 80 caracteres'),
+  systemPrompt: z.string().trim().min(10, 'O prompt deve ter pelo menos 10 caracteres'),
+});
 
 const DEFAULT_PROMPT = `Você é o(a) atendente da empresa. Sua missão é responder os clientes com simpatia, agilidade e clareza.
 
@@ -64,8 +70,9 @@ export function CreateAgentDialog({
   if (!open) return null;
 
   const handleSave = async () => {
-    if (!name.trim() || !systemPrompt.trim()) {
-      toast.error('Nome e system prompt são obrigatórios');
+    const validation = agentSchema.safeParse({ name, systemPrompt });
+    if (!validation.success) {
+      toast.error(validation.error.issues[0].message);
       return;
     }
     setSaving(true);

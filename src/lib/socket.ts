@@ -1,59 +1,50 @@
 import { io, Socket } from 'socket.io-client';
-import axios from 'axios';
+import { API_BASE, isInvalidSession, refreshSession } from './session';
 
 let socket: Socket | null = null;
-let recovering = false;
+let recoverTimer: ReturnType<typeof setTimeout> | null = null;
 let recoverAttempts = 0;
-// Token levado ao último handshake. Reabrir um socket derrubado só faz
-// sentido com um token DIFERENTE do que o gateway acabou de recusar —
-// com o mesmo ele derruba de novo. Também é o que nos mantém fora do
-// caminho da reconexão automática numa queda de rede (mesmo token).
 let lastAttemptedToken: string | null = null;
+let authReady = false;
+let everReady = false;
+const readyListeners = new Set<(ready: boolean, reconnect: boolean) => void>();
 
-const API_BASE =
-  process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1';
+export function getSocketAuthReady() { return authReady; }
+export function subscribeSocketReady(listener: (ready: boolean, reconnect: boolean) => void) {
+  readyListeners.add(listener);
+  return () => { readyListeners.delete(listener); };
+}
+function setReady(ready: boolean) {
+  const reconnect = ready && everReady;
+  authReady = ready;
+  if (ready) everReady = true;
+  for (const listener of readyListeners) {
+    try { listener(ready, reconnect); } catch { /* Isola assinantes. */ }
+  }
+}
 
 function readAccessToken(): string | null {
   if (typeof window === 'undefined') return null;
   return localStorage.getItem('access_token');
 }
 
-async function refreshAccessToken(): Promise<boolean> {
-  const refreshToken = localStorage.getItem('refresh_token');
-  if (!refreshToken) return false;
-  try {
-    // axios puro (não o client com interceptors) pra não entrar em loop de 401.
-    const { data } = await axios.post(`${API_BASE}/auth/refresh`, {
-      refreshToken,
-    });
-    localStorage.setItem('access_token', data.data.accessToken);
-    localStorage.setItem('refresh_token', data.data.refreshToken);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-// Quando o gateway derruba a conexão no handshake (token expirado →
-// client.disconnect() no backend), o socket.io-client recebe reason
-// "io server disconnect" e NÃO reconecta sozinho. Sem este recovery,
-// uma única expiração de access_token mata o realtime até o usuário
-// dar F5 — o REST continua funcionando (interceptor do axios renova o
-// token), então o app parece vivo mas nenhum message:new chega.
-async function recoverFromServerDisconnect() {
-  if (recovering || !socket) return;
-  recovering = true;
-  try {
-    // Backoff pra não loopar caso o servidor rejeite por outro motivo
-    // (membership removida, org inválida) — aí reconectar nunca vai passar.
-    const delay = Math.min(1000 * 2 ** recoverAttempts, 30000);
-    recoverAttempts += 1;
-    await new Promise((r) => setTimeout(r, delay));
-    const ok = await refreshAccessToken();
-    if (ok && socket) socket.connect();
-  } finally {
-    recovering = false;
-  }
+function recoverFromServerDisconnect(target: Socket) {
+  if (recoverTimer || socket !== target || (target.connected && authReady)) return;
+  const delay = Math.min(1000 * 2 ** Math.min(recoverAttempts++, 5), 30000);
+  recoverTimer = setTimeout(async () => {
+    try {
+      await refreshSession();
+      if (socket === target) {
+        recoverTimer = null;
+        target.connect();
+      }
+    } catch (error) {
+      if (socket === target) {
+        recoverTimer = null;
+        if (!isInvalidSession(error)) recoverFromServerDisconnect(target);
+      }
+    }
+  }, delay);
 }
 
 export function getSocket(): Socket {
@@ -66,7 +57,7 @@ export function getSocket(): Socket {
     // só volta com F5. Token igual ao da última tentativa = não insistir:
     // ou o gateway já recusou este token, ou o socket.io está reconectando
     // sozinho e não queremos atropelar.
-    if (token && socket.disconnected && token !== lastAttemptedToken) {
+    if (token && socket.disconnected && !recoverTimer && token !== lastAttemptedToken) {
       lastAttemptedToken = token;
       socket.connect();
     }
@@ -87,7 +78,7 @@ export function getSocket(): Socket {
     // "io server disconnect" — que o socket.io-client NÃO reconecta sozinho.
     // Abrir aqui só serviria pra deixar o singleton morto pra sessão que
     // vem logo depois do login.
-    autoConnect: !!token,
+    autoConnect: false,
     reconnection: true,
     reconnectionDelay: 1000,
     reconnectionDelayMax: 10000,
@@ -101,21 +92,31 @@ export function getSocket(): Socket {
   // handshake sai, e até lá outra montagem poderia pedir um connect() a mais.
   if (token) lastAttemptedToken = token;
 
+  const target = socket;
+  socket.on('connect', () => setReady(false));
   socket.on('disconnect', (reason) => {
-    if (reason !== 'io server disconnect') return;
-    void recoverFromServerDisconnect();
+    setReady(false);
+    if (reason === 'io server disconnect') recoverFromServerDisconnect(target);
   });
-
-  // Handshake completou de verdade (auth + rooms) — zera o backoff.
   socket.on('ready', () => {
     recoverAttempts = 0;
+    if (recoverTimer) clearTimeout(recoverTimer);
+    recoverTimer = null;
+    setReady(true);
   });
+  if (token) socket.connect();
 
   return socket;
 }
 
 export function disconnectSocket() {
+  if (recoverTimer) clearTimeout(recoverTimer);
+  recoverTimer = null;
+  recoverAttempts = 0;
+  everReady = false;
+  setReady(false);
   if (socket) {
+    socket.removeAllListeners();
     socket.disconnect();
     socket = null;
     lastAttemptedToken = null;

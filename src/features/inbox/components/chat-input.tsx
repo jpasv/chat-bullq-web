@@ -125,6 +125,8 @@ export function ChatInput({
       if (textareaRef.current) {
         textareaRef.current.style.height = 'auto';
       }
+    } catch {
+      toast.error('Não foi possível enviar a mensagem. Seu texto foi mantido; tente enviar novamente.');
     } finally {
       setIsSending(false);
     }

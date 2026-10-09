@@ -13,7 +13,7 @@ export function ChannelsList() {
   const queryClient = useQueryClient();
   const orgId = useOrgId();
 
-  const { data: channels, isLoading } = useQuery({
+  const { data: channels, isLoading, isError, refetch } = useQuery({
     queryKey: ['channels', orgId],
     queryFn: () => channelsService.list(),
   });
@@ -45,6 +45,13 @@ export function ChannelsList() {
           Array.from({ length: 2 }).map((_, i) => (
             <div key={i} className="h-32 animate-pulse rounded-xl border border-zinc-200 bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-900" />
           ))
+        ) : isError ? (
+          <div role="alert" className="col-span-full p-6 text-center text-sm text-zinc-500">
+            <p>Não foi possível carregar canais.</p>
+            <button type="button" onClick={() => void refetch()} className="mt-2 text-primary hover:underline">
+              Tentar novamente
+            </button>
+          </div>
         ) : channels && channels.length > 0 ? (
           channels.map((ch) => (
             <ChannelCard key={ch.id} channel={ch} onUpdate={refresh} />

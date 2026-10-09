@@ -147,6 +147,21 @@ export interface PaginatedResponse<T> {
   pagination: { page: number; limit: number; total: number; totalPages: number };
 }
 
+export interface BulkResult {
+  succeeded: string[];
+  failed: { conversationId: string; error: unknown }[];
+}
+
+async function settleConversations(ids: string[], operation: (id: string) => Promise<unknown>): Promise<BulkResult> {
+  const results = await Promise.allSettled(ids.map(operation));
+  const result: BulkResult = { succeeded: [], failed: [] };
+  results.forEach((entry, index) => {
+    if (entry.status === 'fulfilled') result.succeeded.push(ids[index]);
+    else result.failed.push({ conversationId: ids[index], error: entry.reason });
+  });
+  return result;
+}
+
 export const inboxService = {
   async getConversations(params?: Record<string, string>): Promise<{
     conversations: Conversation[];
@@ -341,28 +356,24 @@ export const inboxService = {
     return data.data;
   },
 
-  async bulkClose(ids: string[]): Promise<void> {
-    await Promise.allSettled(ids.map((id) => api.post(`/conversations/${id}/close`)));
+  async bulkClose(ids: string[]): Promise<BulkResult> {
+    return settleConversations(ids, (id) => api.post(`/conversations/${id}/close`));
   },
 
-  async bulkAssignToMe(ids: string[]): Promise<void> {
-    await Promise.allSettled(ids.map((id) => api.post(`/conversations/${id}/assign-me`)));
+  async bulkAssignToMe(ids: string[]): Promise<BulkResult> {
+    return settleConversations(ids, (id) => api.post(`/conversations/${id}/assign-me`));
   },
 
-  async bulkReopen(ids: string[]): Promise<void> {
-    await Promise.allSettled(ids.map((id) => api.post(`/conversations/${id}/reopen`)));
+  async bulkReopen(ids: string[]): Promise<BulkResult> {
+    return settleConversations(ids, (id) => api.post(`/conversations/${id}/reopen`));
   },
 
-  async bulkSetAi(ids: string[], enabled: boolean | null): Promise<void> {
-    await Promise.allSettled(
-      ids.map((id) => api.patch(`/conversations/${id}/ai`, { enabled })),
-    );
+  async bulkSetAi(ids: string[], enabled: boolean | null): Promise<BulkResult> {
+    return settleConversations(ids, (id) => api.patch(`/conversations/${id}/ai`, { enabled }));
   },
 
-  async bulkEngageAi(ids: string[]): Promise<void> {
-    await Promise.allSettled(
-      ids.map((id) => api.post(`/conversations/${id}/ai/engage`)),
-    );
+  async bulkEngageAi(ids: string[]): Promise<BulkResult> {
+    return settleConversations(ids, (id) => api.post(`/conversations/${id}/ai/engage`));
   },
 
   async updateConversation(
@@ -427,6 +438,7 @@ export const inboxService = {
     form.append('file', blob, filename);
     const { data } = await api.post('/messages/uploads/audio', form, {
       headers: { 'Content-Type': 'multipart/form-data' },
+      timeout: 120000,
     });
     return data.data;
   },
