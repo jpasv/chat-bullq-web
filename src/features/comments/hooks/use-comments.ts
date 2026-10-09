@@ -6,13 +6,13 @@ import { commentsService, type CommentsFilters } from '../services/comments.serv
 
 export const COMMENTS_QUERY_KEY = 'social-comments';
 
-export function useComments(filters: CommentsFilters) {
+export function useComments(filters: CommentsFilters, enabled = true) {
   const orgId = useOrgId();
   return useInfiniteQuery({
     queryKey: [COMMENTS_QUERY_KEY, orgId, filters],
     queryFn: ({ pageParam }) => commentsService.list(filters, pageParam ?? undefined),
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (last) => last.nextCursor ?? undefined,
-    enabled: !!orgId,
+    enabled: !!orgId && enabled,
   });
 }
