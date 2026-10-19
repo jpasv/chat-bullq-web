@@ -1,6 +1,6 @@
 import { api } from '@/lib/api';
 
-export type ChannelType = 'WHATSAPP_OFFICIAL' | 'WHATSAPP_ZAPPFY' | 'INSTAGRAM' | 'GMAIL';
+export type ChannelType = 'WHATSAPP_OFFICIAL' | 'WHATSAPP_ZAPPFY' | 'INSTAGRAM' | 'GMAIL' | 'MEMBERS';
 
 export type ChannelVisibility = 'ORG' | 'PRIVATE';
 
@@ -38,6 +38,14 @@ export interface UpdateChannelPayload {
   isActive?: boolean;
   aiEnabled?: boolean | null;
   visibility?: ChannelVisibility;
+}
+
+/** Segredos sem máscara — `GET /channels/:id/secrets` (OWNER/ADMIN). */
+export interface ChannelSecrets {
+  id: string;
+  type: ChannelType;
+  webhookSecret: string | null;
+  config: Record<string, any>;
 }
 
 export interface TestConnectionResult {
@@ -91,6 +99,15 @@ export const channelsService = {
 
   async update(id: string, payload: UpdateChannelPayload): Promise<Channel> {
     const { data } = await api.patch<{ data: Channel }>(`/channels/${id}`, payload);
+    return data.data;
+  },
+
+  /**
+   * List/detail/update devolvem webhookSecret e chaves secretas do config
+   * mascarados ("********abcd"). Este endpoint devolve os valores completos.
+   */
+  async getSecrets(id: string): Promise<ChannelSecrets> {
+    const { data } = await api.get<{ data: ChannelSecrets }>(`/channels/${id}/secrets`);
     return data.data;
   },
 

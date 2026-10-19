@@ -14,6 +14,7 @@ import {
   Send,
   Activity,
   FolderKanban,
+  GraduationCap,
 } from 'lucide-react';
 import { ConversationAiToggle } from './conversation-ai-toggle';
 import { AssignmentPopover } from './assignment-popover';
@@ -39,13 +40,18 @@ function ChannelBadge({ type, name }: { type: string; name: string }) {
   const isTelegram = t.includes('TELEGRAM');
   const isEmail = t.includes('EMAIL') || t.includes('MAIL');
   const isSms = t.includes('SMS');
+  const isMembers = t === 'MEMBERS';
 
   let Icon = MessageSquare;
   let label = 'Chat';
   let cls =
     'bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300';
 
-  if (isWhats) {
+  if (isMembers) {
+    Icon = GraduationCap;
+    label = 'Área de membros';
+    cls = 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400';
+  } else if (isWhats) {
     Icon = Phone;
     label = 'WhatsApp';
     cls = 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400';

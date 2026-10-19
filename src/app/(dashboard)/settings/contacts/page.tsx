@@ -6,13 +6,14 @@ import { useRouter } from 'next/navigation';
 import { Search, Users, MessageSquare, ExternalLink } from 'lucide-react';
 import { contactsService, type Contact } from '@/features/contacts/services/contacts.service';
 import { useOrgId } from '@/hooks/use-org-query-key';
-import { ZappfyIcon, MetaIcon, InstagramIcon, GmailIcon } from '@/components/ui/icons';
+import { ZappfyIcon, MetaIcon, InstagramIcon, GmailIcon, MembersIcon } from '@/components/ui/icons';
 
 const channelIcons: Record<string, React.ElementType> = {
   WHATSAPP_ZAPPFY: ZappfyIcon,
   WHATSAPP_OFFICIAL: MetaIcon,
   INSTAGRAM: InstagramIcon,
   GMAIL: GmailIcon,
+  MEMBERS: MembersIcon,
 };
 
 export default function ContactsPage() {

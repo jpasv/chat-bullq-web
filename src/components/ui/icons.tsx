@@ -77,3 +77,19 @@ export function GmailIcon(props: SVGProps<SVGSVGElement>) {
     </svg>
   );
 }
+
+/** Canal MEMBERS (suporte da área de membros) — capelo de formatura. */
+export function MembersIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg" {...props}>
+      <rect x="2" y="2" width="32" height="32" rx="8" fill="#4F46E5" />
+      <path d="M18 10 7 15.5 18 21l11-5.5L18 10Z" fill="white" />
+      <path
+        d="M11.5 18v4.5c0 1.66 2.91 3.5 6.5 3.5s6.5-1.84 6.5-3.5V18L18 21.25 11.5 18Z"
+        fill="white"
+        opacity="0.85"
+      />
+      <path d="M28 16v6" stroke="white" strokeWidth="1.5" strokeLinecap="round" />
+    </svg>
+  );
+}

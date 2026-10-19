@@ -10,13 +10,14 @@ import {
   type Channel,
   type WhatsAppTemplate,
 } from '@/features/channels/services/channels.service';
-import { ZappfyIcon, MetaIcon, InstagramIcon, GmailIcon } from '@/components/ui/icons';
+import { ZappfyIcon, MetaIcon, InstagramIcon, GmailIcon, MembersIcon } from '@/components/ui/icons';
 
 const channelIcons: Record<string, React.ElementType> = {
   WHATSAPP_ZAPPFY: ZappfyIcon,
   WHATSAPP_OFFICIAL: MetaIcon,
   INSTAGRAM: InstagramIcon,
   GMAIL: GmailIcon,
+  MEMBERS: MembersIcon,
 };
 
 const channelLabels: Record<string, string> = {
@@ -24,6 +25,7 @@ const channelLabels: Record<string, string> = {
   WHATSAPP_OFFICIAL: 'WhatsApp Oficial',
   INSTAGRAM: 'Instagram',
   GMAIL: 'Gmail',
+  MEMBERS: 'Área de membros',
 };
 
 /** Conta placeholders {{1}}, {{2}}... no texto do componente BODY do template. */
@@ -210,7 +212,9 @@ export function NewConversationDialog({ open, onClose, onCreated }: Props) {
               className="mt-1.5 w-full rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm outline-none focus:border-primary focus:ring-1 focus:ring-primary disabled:opacity-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100"
             >
               <option value="">Selecione um canal</option>
-              {channels?.map((c: Channel) => (
+              {/* MEMBERS: a conversa nasce na área de membros (handoff do bot);
+                  a API recusa iniciar por aqui. */}
+              {channels?.filter((c: Channel) => c.type !== 'MEMBERS').map((c: Channel) => (
                 <option key={c.id} value={c.id} disabled={c.type === 'INSTAGRAM'}>
                   {channelLabels[c.type] ?? c.type} — {c.name}
                   {c.type === 'INSTAGRAM' ? ' (indisponível)' : ''}
