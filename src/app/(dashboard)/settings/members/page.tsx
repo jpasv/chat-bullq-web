@@ -11,7 +11,7 @@ import { MemberChannelsDrawer } from '@/features/settings/components/member-chan
 const roleLabels: Record<string, { label: string; icon: React.ElementType; color: string }> = {
   OWNER: { label: 'Proprietário', icon: ShieldCheck, color: 'text-amber-600 bg-amber-50 dark:bg-amber-900/20 dark:text-amber-400' },
   ADMIN: { label: 'Admin', icon: Shield, color: 'text-blue-600 bg-blue-50 dark:bg-blue-900/20 dark:text-blue-400' },
-  AGENT: { label: 'Agente', icon: User, color: 'text-zinc-600 bg-zinc-100 dark:bg-zinc-800 dark:text-zinc-400' },
+  AGENT: { label: 'Operador', icon: User, color: 'text-zinc-600 bg-zinc-100 dark:bg-zinc-800 dark:text-zinc-400' },
 };
 
 export default function SettingsMembersPage() {
@@ -108,7 +108,7 @@ export default function SettingsMembersPage() {
             onChange={(e) => setInviteRole(e.target.value)}
             className="rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100"
           >
-            <option value="AGENT">Agente</option>
+            <option value="AGENT">Operador</option>
             <option value="ADMIN">Admin</option>
           </select>
         </div>
@@ -201,7 +201,7 @@ export default function SettingsMembersPage() {
                           className="rounded-md border border-zinc-200 bg-white px-2 py-1 text-xs dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100"
                         >
                           <option value="ADMIN">Admin</option>
-                          <option value="AGENT">Agente</option>
+                          <option value="AGENT">Operador</option>
                         </select>
                       )}
                     </td>
