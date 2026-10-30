@@ -1,6 +1,6 @@
 import { api } from '@/lib/api';
 
-export type IgFlowTriggerType = 'COMMENT' | 'STORY_REPLY';
+export type IgFlowTriggerType = 'COMMENT' | 'STORY_REPLY' | 'DM_KEYWORD';
 
 export type IgFlowRunStatus = 'RUNNING' | 'WAITING' | 'WAITING_INTERACTION' | 'DONE' | 'FAILED';
 
