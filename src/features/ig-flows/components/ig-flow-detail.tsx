@@ -155,12 +155,14 @@ function TriggerCard({ flow, stats }: { flow: IgFlow; stats?: IgFlowStats }) {
             )}
           </dd>
         </div>
-        <div>
-          <dt className="text-xs text-zinc-400">Posts</dt>
-          <dd className="mt-1 text-zinc-700 dark:text-zinc-300">
-            {cfg.mediaIds?.length ? `${cfg.mediaIds.length} post(s) específico(s)` : 'Qualquer post'}
-          </dd>
-        </div>
+        {flow.triggerType === 'COMMENT' && (
+          <div>
+            <dt className="text-xs text-zinc-400">Posts</dt>
+            <dd className="mt-1 text-zinc-700 dark:text-zinc-300">
+              {cfg.mediaIds?.length ? `${cfg.mediaIds.length} post(s) específico(s)` : 'Qualquer post'}
+            </dd>
+          </div>
+        )}
         <div>
           <dt className="text-xs text-zinc-400">Mesma pessoa</dt>
           <dd className="mt-1 text-zinc-700 dark:text-zinc-300">

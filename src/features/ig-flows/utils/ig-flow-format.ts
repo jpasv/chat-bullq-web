@@ -25,6 +25,7 @@ export function parkedLabel(status: IgFlowRunStatus, nodeType: IgFlowNode['type'
 export const TRIGGER_LABEL: Record<string, string> = {
   COMMENT: 'Comentário em post',
   STORY_REPLY: 'Resposta a story',
+  DM_KEYWORD: 'Palavra na DM',
 };
 
 export const NODE_TYPE_LABEL: Record<IgFlowNode['type'], string> = {
