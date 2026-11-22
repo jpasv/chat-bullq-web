@@ -218,7 +218,7 @@ function humanizeMentions(
   nameByPhone?: Map<string, string>,
 ): string {
   if (!nameByPhone?.size) return text;
-  return text.replace(/@(\d{10,15})\b/g, (full, phone) => {
+  return text.replace(/@(\d{10,18})\b/g, (full, phone) => {
     const name = nameByPhone.get(phone);
     return name ? `@${name}` : full;
   });
@@ -473,11 +473,16 @@ export function ChatPanel({
     retry: false,
   });
 
-  // telefone -> nome, pra trocar `@5545...` pelo nome na hora de exibir.
-  const mentionNames = useMemo(
-    () => new Map(participants.map((p) => [p.phone, p.name])),
-    [participants],
-  );
+  // telefone/LID -> nome, pra trocar `@5545...` pelo nome na hora de exibir.
+  // Menção feita no celular chega como `@<LID>`, não `@<telefone>`.
+  const mentionNames = useMemo(() => {
+    const names = new Map<string, string>();
+    for (const p of participants) {
+      names.set(p.phone, p.name);
+      if (p.lid) names.set(p.lid, p.name);
+    }
+    return names;
+  }, [participants]);
 
   // nome -> foto, pra dar rosto a quem manda mensagem no grupo. A mensagem
   // guarda o nome do remetente (não o telefone), então é por aí que casamos.

@@ -181,6 +181,8 @@ export const inboxService = {
   ): Promise<
     Array<{
       phone: string;
+      /** LID do WhatsApp (só dígitos) — menção feita no celular vem assim. */
+      lid?: string | null;
       name: string;
       avatarUrl: string | null;
       isAdmin: boolean;
