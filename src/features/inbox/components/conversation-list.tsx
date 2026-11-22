@@ -18,6 +18,7 @@ import {
   FolderPlus,
   MailOpen,
   Archive,
+  ArchiveRestore,
   Pin,
   Tag as TagIcon,
   Layers,
@@ -766,6 +767,30 @@ export function ConversationList({ activeId, onSelect, viewId }: ConversationLis
     },
     [selectedIds, clearSelection, invalidateConversations],
   );
+
+  // Na aba "Arquivadas" o mesmo botão desarquiva.
+  const handleBulkArchive = useCallback(async () => {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) return;
+    const archive = !archivedOnly;
+    setBulkLoading(true);
+    try {
+      const { failed } = await inboxService.bulkSetArchived(ids, archive);
+      const ok = ids.length - failed;
+      if (ok > 0) {
+        toast.success(
+          `${ok} conversa${ok > 1 ? 's' : ''} ${archive ? 'arquivada' : 'desarquivada'}${ok > 1 ? 's' : ''}`,
+        );
+      }
+      if (failed > 0) {
+        toast.error(`${failed} não ${failed > 1 ? 'puderam' : 'pôde'} ser ${archive ? 'arquivada' : 'desarquivada'}${failed > 1 ? 's' : ''}`);
+      }
+      clearSelection();
+      invalidateConversations();
+    } finally {
+      setBulkLoading(false);
+    }
+  }, [selectedIds, archivedOnly, clearSelection, invalidateConversations]);
 
   const handleBulkSetAi = useCallback(
     async (override: boolean | null) => {
@@ -1635,6 +1660,18 @@ export function ConversationList({ activeId, onSelect, viewId }: ConversationLis
             className="flex h-7 w-7 items-center justify-center rounded-md text-zinc-500 transition-colors hover:bg-emerald-50 hover:text-emerald-500 disabled:opacity-50 dark:hover:bg-emerald-500/10"
           >
             <RotateCcw className="h-3.5 w-3.5" />
+          </button>
+          <button
+            onClick={handleBulkArchive}
+            disabled={bulkLoading}
+            title={archivedOnly ? 'Desarquivar' : 'Arquivar'}
+            className="flex h-7 w-7 items-center justify-center rounded-md text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-800 disabled:opacity-50 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
+          >
+            {archivedOnly ? (
+              <ArchiveRestore className="h-3.5 w-3.5" />
+            ) : (
+              <Archive className="h-3.5 w-3.5" />
+            )}
           </button>
         </div>
       )}

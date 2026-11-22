@@ -355,6 +355,23 @@ export const inboxService = {
     await Promise.allSettled(ids.map((id) => api.post(`/conversations/${id}/reopen`)));
   },
 
+  /**
+   * Arquiva/desarquiva em lote. A API só tem a rota por conversa; vai de 5
+   * em 5 pra não abrir dezenas de conexões no banco de uma vez. Devolve
+   * quantas falharam.
+   */
+  async bulkSetArchived(ids: string[], archived: boolean): Promise<{ failed: number }> {
+    const action = archived ? 'archive' : 'unarchive';
+    let failed = 0;
+    for (let i = 0; i < ids.length; i += 5) {
+      const results = await Promise.allSettled(
+        ids.slice(i, i + 5).map((id) => api.post(`/conversations/${id}/${action}`)),
+      );
+      failed += results.filter((r) => r.status === 'rejected').length;
+    }
+    return { failed };
+  },
+
   async bulkSetAi(ids: string[], enabled: boolean | null): Promise<void> {
     await Promise.allSettled(
       ids.map((id) => api.patch(`/conversations/${id}/ai`, { enabled })),
