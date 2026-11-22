@@ -67,6 +67,20 @@ export function ChatInput({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const recorder = useAudioRecorder();
 
+  // URL da prévia do áudio gravado. Criada uma vez por gravação e revogada
+  // na troca/descartar/unmount — criar no render gerava uma URL nova a cada
+  // re-render (vazava memória e reiniciava o <audio> da prévia).
+  const [audioPreviewUrl, setAudioPreviewUrl] = useState<string | null>(null);
+  useEffect(() => {
+    if (!recorder.blob) {
+      setAudioPreviewUrl(null);
+      return;
+    }
+    const objectUrl = URL.createObjectURL(recorder.blob);
+    setAudioPreviewUrl(objectUrl);
+    return () => URL.revokeObjectURL(objectUrl);
+  }, [recorder.blob]);
+
   // Preview da imagem colada; revoga o objectURL em toda troca/descarte/unmount.
   useEffect(() => {
     if (!pastedImage) {
@@ -346,8 +360,8 @@ export function ChatInput({
   }
 
   // PREVIEW MODE: the recording finished, user can listen/discard/send.
-  if (recorder.state === 'stopped' && recorder.blob) {
-    const audioSrc = URL.createObjectURL(recorder.blob);
+  if (recorder.state === 'stopped' && recorder.blob && audioPreviewUrl) {
+    const audioSrc = audioPreviewUrl;
     return (
       <div className="border-t border-zinc-200 bg-white p-3 dark:border-zinc-800 dark:bg-zinc-950">
         <div className="flex items-center gap-2 rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2.5 dark:border-zinc-700 dark:bg-zinc-900">
