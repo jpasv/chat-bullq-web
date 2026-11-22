@@ -4,6 +4,13 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Play, Pause, Loader2, Sparkles, ChevronDown, Check } from 'lucide-react';
 import { Popover, PopoverButton, PopoverPanel } from '@headlessui/react';
 import { inboxService, type Message, type TranscriptionResult } from '../services/inbox.service';
+import { mediaErrorMessage, needsServerResolve } from '../utils/media-url';
+
+/** URL guardada só vale se der pra tocar direto; senão, resolve no backend. */
+function playableUrl(url: unknown): string | undefined {
+  if (typeof url !== 'string' || !url) return undefined;
+  return needsServerResolve(url) ? undefined : url;
+}
 
 const SPEEDS = [1, 1.25, 1.5, 1.75, 2] as const;
 
@@ -36,13 +43,17 @@ export function AudioMessagePlayer({
   // carries an encrypted .enc CDN link. We hit the backend to resolve (and
   // cache) a decrypted URL on first play. Outbound audios already have
   // content.mediaUrl pointing to our own upload.
-  const initialMediaUrl = message.content?.mediaUrl as string | undefined;
+  const initialMediaUrl = playableUrl(message.content?.mediaUrl);
   const [resolvedUrl, setResolvedUrl] = useState<string | undefined>(initialMediaUrl);
   const [resolving, setResolving] = useState(false);
+  // Uma nova tentativa pelo backend quando a URL guardada não carrega
+  // (link expirado, arquivo sumido) — sem isso o player ficava preso no erro.
+  const retriedRef = useRef(false);
   const mediaUrl = resolvedUrl;
 
   useEffect(() => {
-    setResolvedUrl(message.content?.mediaUrl);
+    setResolvedUrl(playableUrl(message.content?.mediaUrl));
+    retriedRef.current = false;
   }, [message.content?.mediaUrl]);
 
   const ensureResolved = async (): Promise<string | null> => {
@@ -53,7 +64,7 @@ export function AudioMessagePlayer({
       setResolvedUrl(url);
       return url;
     } catch (err: any) {
-      setError(err?.message || 'Não foi possível carregar o áudio');
+      setError(mediaErrorMessage(err, 'Não foi possível carregar o áudio'));
       return null;
     } finally {
       setResolving(false);
@@ -121,6 +132,26 @@ export function AudioMessagePlayer({
     }
   };
 
+  const handleAudioError = async () => {
+    if (!resolvedUrl) return;
+    if (retriedRef.current) {
+      setError('Falha ao carregar áudio');
+      return;
+    }
+    retriedRef.current = true;
+    try {
+      const { url } = await inboxService.resolveMediaUrl(message.id);
+      if (url && url !== resolvedUrl) {
+        setError(null);
+        setResolvedUrl(url);
+      } else {
+        setError('Falha ao carregar áudio');
+      }
+    } catch (err: any) {
+      setError(mediaErrorMessage(err, 'Falha ao carregar áudio'));
+    }
+  };
+
   const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
     const audio = audioRef.current;
     if (!audio || !Number.isFinite(audio.duration)) return;
@@ -172,7 +203,7 @@ export function AudioMessagePlayer({
         onPlay={() => setPlaying(true)}
         onPause={() => setPlaying(false)}
         onEnded={() => { setPlaying(false); setCurrentTime(0); }}
-        onError={() => setError('Falha ao carregar áudio')}
+        onError={handleAudioError}
       />
       <div className="flex items-center gap-3">
         <button

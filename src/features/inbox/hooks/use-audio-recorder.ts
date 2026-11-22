@@ -22,6 +22,9 @@ export function useAudioRecorder() {
   const streamRef = useRef<MediaStream | null>(null);
   const startedAtRef = useRef<number>(0);
   const tickRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // O `onstop` do MediaRecorder dispara depois do cancel(): sem essa marca
+  // ele reabria a prévia com o áudio que o usuário acabou de descartar.
+  const discardRef = useRef(false);
 
   const pickMime = (): string => {
     if (typeof window === 'undefined') return 'audio/webm';
@@ -58,6 +61,7 @@ export function useAudioRecorder() {
     setBlob(null);
     setElapsedMs(0);
     chunksRef.current = [];
+    discardRef.current = false;
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
@@ -70,6 +74,10 @@ export function useAudioRecorder() {
         if (ev.data && ev.data.size > 0) chunksRef.current.push(ev.data);
       };
       recorder.onstop = () => {
+        if (discardRef.current) {
+          chunksRef.current = [];
+          return;
+        }
         const out = new Blob(chunksRef.current, { type: chosenMime });
         setBlob(out);
         setState('stopped');
@@ -108,6 +116,7 @@ export function useAudioRecorder() {
   }, []);
 
   const cancel = useCallback(() => {
+    discardRef.current = true;
     stop();
     setBlob(null);
     setState('idle');

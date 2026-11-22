@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { inboxService, type Message } from '../services/inbox.service';
+import { mediaErrorMessage, needsServerResolve } from '../utils/media-url';
 
 type ResolveMode = 'eager' | 'lazy';
 
@@ -76,11 +77,7 @@ export function useResolvedMedia(
         setUrl(resolved.url);
         if (resolved.mimeType) setMimeType(resolved.mimeType);
       } catch (err: any) {
-        setError(
-          err?.response?.data?.message ||
-            err?.message ||
-            'Não foi possível carregar a mídia',
-        );
+        setError(mediaErrorMessage(err, 'Não foi possível carregar a mídia'));
       } finally {
         setLoading(false);
         inflightRef.current = null;
@@ -116,10 +113,7 @@ function pickInitialUrl(message: Message): string | undefined {
   return u;
 }
 
-/**
- * The webhook from Uazapi stores a .enc URL on `mmg.whatsapp.net`. Browsers
- * can't decrypt it — treating it as unplayable forces a backend resolve.
- */
+/** Ver needsServerResolve: .enc do WhatsApp e link temporário da Uazapi. */
 function looksUnplayable(u: string): boolean {
-  return /\.enc(\?|$)/i.test(u) || /mmg\.whatsapp\.net/i.test(u);
+  return needsServerResolve(u);
 }
