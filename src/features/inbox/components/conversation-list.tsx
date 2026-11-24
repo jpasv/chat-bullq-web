@@ -20,6 +20,7 @@ import {
   Archive,
   ArchiveRestore,
   Pin,
+  PinOff,
   Tag as TagIcon,
   Layers,
   FolderKanban,
@@ -524,17 +525,31 @@ export function ConversationList({ activeId, onSelect, viewId }: ConversationLis
     setLastClickedIndex(null);
   }, []);
 
-  const handleConversationClick = useCallback(
-    (conv: Conversation, index: number, e: React.MouseEvent) => {
+  // Linhas que participam da seleção em massa, na ordem da tela: Fixadas
+  // em cima, depois a lista paginada. O índice de cada linha é a posição
+  // aqui — é o que o shift+clique usa pra marcar um intervalo.
+  const selectableRows = useMemo(
+    () => [...(pinnedEnabled ? pinnedConversations : []), ...conversations],
+    [pinnedEnabled, pinnedConversations, conversations],
+  );
+
+  /**
+   * Cliques que mexem na seleção, igual ao app: com alguma conversa
+   * marcada, clicar em outra marca/desmarca (em vez de abrir); Cmd/Ctrl+
+   * clique começa a seleção; shift+clique marca o intervalo. Devolve true
+   * quando tratou o clique.
+   */
+  const handleSelectionClick = useCallback(
+    (conv: Conversation, index: number, e: React.MouseEvent): boolean => {
       if (e.shiftKey) {
         e.preventDefault();
         setSelectedIds((prev) => {
           const next = new Set(prev);
-          if (lastClickedIndex !== null && conversations.length > 0) {
+          if (lastClickedIndex !== null && selectableRows.length > 0) {
             const start = Math.min(lastClickedIndex, index);
-            const end = Math.max(lastClickedIndex, index);
+            const end = Math.min(Math.max(lastClickedIndex, index), selectableRows.length - 1);
             for (let i = start; i <= end; i++) {
-              next.add(conversations[i].id);
+              next.add(selectableRows[i].id);
             }
           } else {
             next.add(conv.id);
@@ -542,12 +557,26 @@ export function ConversationList({ activeId, onSelect, viewId }: ConversationLis
           return next;
         });
         setLastClickedIndex(index);
-        return;
+        return true;
       }
+      if (e.metaKey || e.ctrlKey || selectedIds.size > 0) {
+        e.preventDefault();
+        setSelectedIds((prev) => {
+          const next = new Set(prev);
+          if (next.has(conv.id)) next.delete(conv.id);
+          else next.add(conv.id);
+          return next;
+        });
+        setLastClickedIndex(index);
+        return true;
+      }
+      return false;
+    },
+    [lastClickedIndex, selectableRows, selectedIds.size],
+  );
 
-      if (selectedIds.size > 0) {
-        clearSelection();
-      }
+  const handleConversationClick = useCallback(
+    (conv: Conversation, index: number) => {
       onSelect(conv);
       setLastClickedIndex(index);
 
@@ -612,17 +641,7 @@ export function ConversationList({ activeId, onSelect, viewId }: ConversationLis
         });
       }
     },
-    [
-      lastClickedIndex,
-      conversations,
-      selectedIds.size,
-      clearSelection,
-      onSelect,
-      queryClient,
-      orgId,
-      viewId,
-      unreadOnly,
-    ],
+    [onSelect, queryClient, orgId, viewId, unreadOnly],
   );
 
   const toggleSelect = useCallback((id: string, index: number) => {
@@ -636,11 +655,24 @@ export function ConversationList({ activeId, onSelect, viewId }: ConversationLis
   }, []);
 
   const selectAll = useCallback(() => {
-    setSelectedIds(new Set(conversations.map((c) => c.id)));
-  }, [conversations]);
+    setSelectedIds(new Set(selectableRows.map((c) => c.id)));
+  }, [selectableRows]);
 
+  // Esc sai da seleção.
+  useEffect(() => {
+    if (selectedIds.size === 0) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') clearSelection();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [selectedIds.size, clearSelection]);
+
+  // A seção "Fixadas" tem cache próprio (conversations-pinned) — ação em
+  // massa também pode mexer nela.
   const invalidateConversations = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: ['conversations'] });
+    queryClient.invalidateQueries({ queryKey: ['conversations-pinned'] });
   }, [queryClient]);
 
   // Realtime: refresh list on inbound messages, imported conversations, or
@@ -793,6 +825,43 @@ export function ConversationList({ activeId, onSelect, viewId }: ConversationLis
     }
   }, [selectedIds, archivedOnly, clearSelection, invalidateConversations]);
 
+  // Fixar/desafixar em lote: se todas as marcadas já estão fixadas,
+  // desafixa; senão fixa as que faltam.
+  const allSelectedPinned = useMemo(() => {
+    if (selectedIds.size === 0) return false;
+    const pinned = new Set(pinnedConversations.map((c) => c.id));
+    for (const id of selectedIds) if (!pinned.has(id)) return false;
+    return true;
+  }, [selectedIds, pinnedConversations]);
+
+  const handleBulkPin = useCallback(async () => {
+    const pin = !allSelectedPinned;
+    const pinned = new Set(pinnedConversations.map((c) => c.id));
+    const ids = Array.from(selectedIds).filter((id) => pinned.has(id) !== pin);
+    if (ids.length === 0) return;
+    setBulkLoading(true);
+    try {
+      const { failed } = await inboxService.bulkSetPinned(ids, pin);
+      const ok = ids.length - failed;
+      if (ok > 0) {
+        toast.success(
+          `${ok} conversa${ok > 1 ? 's' : ''} ${pin ? 'fixada' : 'desafixada'}${ok > 1 ? 's' : ''}`,
+        );
+      }
+      if (failed > 0) {
+        toast.error(
+          pin
+            ? `${failed} não ${failed > 1 ? 'puderam' : 'pôde'} ser fixada${failed > 1 ? 's' : ''} (limite de 50 fixadas)`
+            : `${failed} não ${failed > 1 ? 'puderam' : 'pôde'} ser desafixada${failed > 1 ? 's' : ''}`,
+        );
+      }
+      clearSelection();
+      invalidateConversations();
+    } finally {
+      setBulkLoading(false);
+    }
+  }, [allSelectedPinned, pinnedConversations, selectedIds, clearSelection, invalidateConversations]);
+
   const handleBulkSetAi = useCallback(
     async (override: boolean | null) => {
       const ids = Array.from(selectedIds);
@@ -933,14 +1002,13 @@ export function ConversationList({ activeId, onSelect, viewId }: ConversationLis
     return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
   };
 
-  // Clique numa linha da seção "Fixadas" — não participa de seleção em
-  // massa/shift-click (essas linhas ficam fora do array `conversations`,
-  // então índices de range-select não fazem sentido pra elas). Só abre a
-  // conversa e marca como lida, mesmo efeito colateral de
-  // handleConversationClick, só que restrito ao cache de `conversations-pinned`.
+  // Clique (sem seleção) numa linha da seção "Fixadas": abre a conversa e
+  // marca como lida, mesmo efeito de handleConversationClick, só que no
+  // cache de `conversations-pinned`.
   const handlePinnedRowClick = useCallback(
-    (conv: Conversation) => {
+    (conv: Conversation, index: number) => {
       onSelect(conv);
+      setLastClickedIndex(index);
       if ((conv.unreadCount ?? 0) > 0) {
         const lastMsgId = conv.messages?.[0]?.id;
         queryClient.setQueriesData<any>(
@@ -963,24 +1031,24 @@ export function ConversationList({ activeId, onSelect, viewId }: ConversationLis
     [onSelect, queryClient],
   );
 
-  // Reaproveitado pela lista paginada (selectable=true, participa de
-  // seleção em massa) e pela seção "Fixadas" (selectable=false).
+  // Reaproveitado pela lista paginada e pela seção "Fixadas"; as duas
+  // participam da seleção em massa. `index` é a posição em selectableRows.
   const renderConversationRow = (
     conv: Conversation,
     index: number,
-    selectable: boolean,
+    pinnedRow: boolean,
   ) => {
     const isActive = conv.id === activeId;
-    const isSelected = selectable && selectedIds.has(conv.id);
-    const inSelectionMode = selectable && selectedIds.size > 0;
+    const isSelected = selectedIds.has(conv.id);
+    const inSelectionMode = selectedIds.size > 0;
     return (
       <button
         key={conv.id}
-        onClick={(e) =>
-          selectable
-            ? handleConversationClick(conv, index, e)
-            : handlePinnedRowClick(conv)
-        }
+        onClick={(e) => {
+          if (handleSelectionClick(conv, index, e)) return;
+          if (pinnedRow) handlePinnedRowClick(conv, index);
+          else handleConversationClick(conv, index);
+        }}
         onContextMenu={(e) => {
           e.preventDefault();
           setContextMenu({
@@ -1011,29 +1079,25 @@ export function ConversationList({ activeId, onSelect, viewId }: ConversationLis
             />
           </div>
           {/* Checkbox: aparece no hover sempre, fica visível travada
-              quando já tem seleção ativa ou esse item é parte dela.
-              Fora da lista paginada (seção "Fixadas") não existe seleção
-              em massa, então nem renderiza. */}
-          {selectable && (
-            <div
-              role="checkbox"
-              aria-checked={isSelected}
-              onClick={(e) => {
-                e.stopPropagation();
-                toggleSelect(conv.id, index);
-              }}
-              className={`absolute inset-0 flex h-10 w-10 cursor-pointer items-center justify-center rounded-full border-2 transition-colors ${
-                isSelected
-                  ? 'border-primary bg-primary text-white opacity-100'
-                  : inSelectionMode
-                    ? 'border-zinc-300 bg-zinc-100 text-transparent hover:border-primary/50 dark:border-zinc-600 dark:bg-zinc-800'
-                    : 'border-zinc-300 bg-white text-transparent opacity-0 hover:border-primary/50 group-hover/avatar:opacity-100 dark:border-zinc-600 dark:bg-zinc-900'
-              }`}
-              title={isSelected ? 'Desmarcar' : 'Selecionar'}
-            >
-              <Check className="h-4 w-4" />
-            </div>
-          )}
+              quando já tem seleção ativa ou esse item é parte dela. */}
+          <div
+            role="checkbox"
+            aria-checked={isSelected}
+            onClick={(e) => {
+              e.stopPropagation();
+              toggleSelect(conv.id, index);
+            }}
+            className={`absolute inset-0 flex h-10 w-10 cursor-pointer items-center justify-center rounded-full border-2 transition-colors ${
+              isSelected
+                ? 'border-primary bg-primary text-white opacity-100'
+                : inSelectionMode
+                  ? 'border-zinc-300 bg-zinc-100 text-transparent hover:border-primary/50 dark:border-zinc-600 dark:bg-zinc-800'
+                  : 'border-zinc-300 bg-white text-transparent opacity-0 hover:border-primary/50 group-hover/avatar:opacity-100 dark:border-zinc-600 dark:bg-zinc-900'
+            }`}
+            title={isSelected ? 'Desmarcar' : 'Selecionar'}
+          >
+            <Check className="h-4 w-4" />
+          </div>
           {(() => {
             const ChannelIcon = channelIcons[conv.channel.type] || MessageSquare;
             return (
@@ -1662,6 +1726,20 @@ export function ConversationList({ activeId, onSelect, viewId }: ConversationLis
           >
             <RotateCcw className="h-3.5 w-3.5" />
           </button>
+          {!archivedOnly && (
+            <button
+              onClick={handleBulkPin}
+              disabled={bulkLoading}
+              title={allSelectedPinned ? 'Desafixar' : 'Fixar'}
+              className="flex h-7 w-7 items-center justify-center rounded-md text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-800 disabled:opacity-50 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
+            >
+              {allSelectedPinned ? (
+                <PinOff className="h-3.5 w-3.5" />
+              ) : (
+                <Pin className="h-3.5 w-3.5" />
+              )}
+            </button>
+          )}
           <button
             onClick={handleBulkArchive}
             disabled={bulkLoading}
@@ -1690,7 +1768,7 @@ export function ConversationList({ activeId, onSelect, viewId }: ConversationLis
             Fixadas
           </div>
           {pinnedConversations.map((conv, index) =>
-            renderConversationRow(conv, index, false),
+            renderConversationRow(conv, index, true),
           )}
         </div>
       )}
@@ -1727,7 +1805,11 @@ export function ConversationList({ activeId, onSelect, viewId }: ConversationLis
         ) : (
           <>
             {conversations.map((conv, index) =>
-              renderConversationRow(conv, index, true),
+              renderConversationRow(
+                conv,
+                (pinnedEnabled ? pinnedConversations.length : 0) + index,
+                false,
+              ),
             )}
             {/* Sentinel for infinite scroll */}
             <div ref={sentinelRef} className="h-1" />
@@ -1745,6 +1827,12 @@ export function ConversationList({ activeId, onSelect, viewId }: ConversationLis
           conversation={contextMenu.conversation}
           position={contextMenu.position}
           onClose={() => setContextMenu(null)}
+          onStartSelection={() => {
+            const id = contextMenu.conversation.id;
+            setSelectedIds((prev) => new Set(prev).add(id));
+            const index = selectableRows.findIndex((c) => c.id === id);
+            if (index !== -1) setLastClickedIndex(index);
+          }}
         />
       )}
 
