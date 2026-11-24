@@ -11,7 +11,7 @@ const EXTRA_MAP = new Map([...EXTRA_FROM].map((ch, i) => [ch, EXTRA_TO[i]]));
 
 export function normalizeSearchText(value: string | null | undefined): string {
   if (!value) return '';
-  const stripped = value.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+  const stripped = value.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
   let out = '';
   for (const ch of stripped) out += EXTRA_MAP.get(ch) ?? ch;
   return out.replace(/\s+/g, ' ').trim();
