@@ -4,6 +4,7 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import { Send, Paperclip, Mic, Trash2, Square, Loader2, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAudioRecorder } from '../hooks/use-audio-recorder';
+import { normalizeSearchText, textIncludes } from '@/lib/search';
 
 export interface MentionParticipant {
   phone: string;
@@ -148,9 +149,9 @@ export function ChatInput({
   // o texto digitado casa com ele.
   const mentionMatches = (() => {
     if (mentionAt === null || !participants.length) return [];
-    const q = mentionQuery.toLowerCase();
+    const q = normalizeSearchText(mentionQuery);
     const people = participants.filter(
-      (p) => p.name.toLowerCase().includes(q) || p.phone.includes(q),
+      (p) => textIncludes(p.name, q) || p.phone.includes(q),
     );
     const withAll: MentionParticipant[] =
       !q || MENTION_ALL_LABEL.startsWith(q)

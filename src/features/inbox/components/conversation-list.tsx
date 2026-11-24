@@ -53,6 +53,7 @@ import { NewConversationDialog } from './new-conversation-dialog';
 import { BulkAiPopover } from './bulk-ai-popover';
 import { BulkPipelinePopover } from './bulk-pipeline-popover';
 import { pipelinesService } from '@/features/pipelines/services/pipelines.service';
+import { normalizeSearchText, textIncludes } from '@/lib/search';
 
 function ListAvatar({ name, avatarUrl }: { name: string | null; avatarUrl: string | null }) {
   const [failed, setFailed] = useState(false);
@@ -343,9 +344,9 @@ export function ConversationList({ activeId, onSelect, viewId }: ConversationLis
   });
 
   const filteredTags = useMemo(() => {
-    const q = tagSearch.trim().toLowerCase();
+    const q = normalizeSearchText(tagSearch);
     if (!q) return tags;
-    return tags.filter((t) => t.name.toLowerCase().includes(q));
+    return tags.filter((t) => textIncludes(t.name, q));
   }, [tags, tagSearch]);
 
   // Drop selected tag ids that no longer exist (tag deleted in another tab).

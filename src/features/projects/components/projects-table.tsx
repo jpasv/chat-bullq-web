@@ -8,6 +8,7 @@ import { useOrgId } from '@/hooks/use-org-query-key';
 import { membersService } from '@/features/settings/services/members.service';
 import { projectsService } from '../services/projects.service';
 import { PROJECT_STATUSES, hoppeTaskUrl } from '../project-fields';
+import { normalizeSearchText, textIncludes } from '@/lib/search';
 
 const controlCls =
   'h-9 rounded-md border border-zinc-300 bg-white px-2.5 text-sm text-zinc-900 outline-none focus:border-primary focus:ring-1 focus:ring-primary dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100';
@@ -35,13 +36,9 @@ export function ProjectsTable() {
   });
 
   const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
+    const q = normalizeSearchText(search);
     if (!q) return rows;
-    return rows.filter(
-      (r) =>
-        r.name.toLowerCase().includes(q) ||
-        (r.hoppeId ?? '').toLowerCase().includes(q),
-    );
+    return rows.filter((r) => textIncludes(r.name, q) || textIncludes(r.hoppeId, q));
   }, [rows, search]);
 
   const openProject = (conversationId: string) => {

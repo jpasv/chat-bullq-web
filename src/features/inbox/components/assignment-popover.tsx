@@ -11,6 +11,7 @@ import {
   type Member,
 } from '@/features/settings/services/members.service';
 import { useAuthStore } from '@/stores/auth-store';
+import { normalizeSearchText, textIncludes } from '@/lib/search';
 
 interface Props {
   conversation: Conversation;
@@ -62,13 +63,12 @@ export function AssignmentPopover({ conversation, onChanged }: Props) {
   });
 
   const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
+    const q = normalizeSearchText(search);
     return members
       .filter((m) => m.user.isActive)
       .filter((m) =>
         q
-          ? m.user.name.toLowerCase().includes(q) ||
-            m.user.email.toLowerCase().includes(q)
+          ? textIncludes(m.user.name, q) || textIncludes(m.user.email, q)
           : true,
       );
   }, [members, search]);
