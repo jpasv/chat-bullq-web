@@ -13,6 +13,7 @@ import {
   aiAgentsService,
   type AiAgent,
 } from '@/features/ai-agents/services/ai-agents.service';
+import { normalizeSearchText, textIncludes } from '@/lib/search';
 
 interface Props {
   conversation: Conversation;
@@ -37,13 +38,12 @@ export function AgentPinPopover({ conversation, onChanged }: Props) {
   });
 
   const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
+    const q = normalizeSearchText(search);
     return agents
       .filter((a) => a.isActive)
       .filter((a) =>
         q
-          ? a.name.toLowerCase().includes(q) ||
-            (a.description ?? '').toLowerCase().includes(q)
+          ? textIncludes(a.name, q) || textIncludes(a.description, q)
           : true,
       );
   }, [agents, search]);

@@ -24,6 +24,7 @@ import { PostList, postKey } from './post-list';
 import { CommentCard } from './comment-card';
 import { CommentReplyBox } from './comment-reply-box';
 import { PrivateReplyDialog } from './private-reply-dialog';
+import { normalizeSearchText, textIncludes } from '@/lib/search';
 
 function toApiFilters(post: SocialMediaSummary | null, view: CommentsToolbarState['view']): ApiFilters {
   const f: ApiFilters = {};
@@ -41,14 +42,14 @@ const isUnreplied = (c: SocialComment) => !c.repliedAt && !c.isFromPage && c.sta
 
 /** Busca e ordenação no cliente: a lista é sempre de um post só. */
 function applyToolbar(items: SocialComment[], t: CommentsToolbarState): SocialComment[] {
-  const q = t.search.trim().toLowerCase().replace(/^@/, '');
+  const q = normalizeSearchText(t.search).replace(/^@/, '');
   let out = items;
   if (q) {
     out = out.filter(
       (c) =>
-        c.text.toLowerCase().includes(q) ||
-        (c.authorUsername ?? '').toLowerCase().includes(q) ||
-        c.replies.some((r) => r.text.toLowerCase().includes(q) || (r.authorUsername ?? '').toLowerCase().includes(q)),
+        textIncludes(c.text, q) ||
+        textIncludes(c.authorUsername, q) ||
+        c.replies.some((r) => textIncludes(r.text, q) || textIncludes(r.authorUsername, q)),
     );
   }
   const byTime = (a: SocialComment, b: SocialComment) =>
