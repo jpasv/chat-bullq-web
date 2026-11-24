@@ -4,7 +4,11 @@ export interface InboxPreferences {
   scope?: 'ALL' | 'MINE';
   /** @deprecated mantido pra compat de leitura — não escrevemos mais aqui. */
   statusFilters?: string[];
+  /** @deprecated um canal só — lido como fallback de selectedChannelIds. */
   selectedChannelId?: string | null;
+  /** Canais do filtro da inbox (vários ao mesmo tempo). Vazio = todos.
+   *  Mutuamente exclusivo com selectedSegmentId. */
+  selectedChannelIds?: string[];
   /** Filtro por Segmento (grupos compartilhados entre vários números).
    *  Mutuamente exclusivo com selectedChannelId. */
   selectedSegmentId?: string | null;
