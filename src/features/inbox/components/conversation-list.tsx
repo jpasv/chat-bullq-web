@@ -149,7 +149,9 @@ export function ConversationList({ activeId, onSelect, viewId }: ConversationLis
   // Default false = grupos NÃO aparecem no inbox geral (regra do JP).
   // Toggle pra true exibe junto com individuais.
   const [showGroups, setShowGroups] = useState(false);
-  const [selectedChannelId, setSelectedChannelId] = useState<string | null>(null);
+  // Canais (números) do filtro — vários ao mesmo tempo, igual ao app.
+  // Vazio = todos.
+  const [selectedChannelIds, setSelectedChannelIds] = useState<string[]>([]);
   const [selectedSegmentId, setSelectedSegmentId] = useState<string | null>(null);
   const [selectedProjectStatus, setSelectedProjectStatus] = useState('');
   const [mineProjects, setMineProjects] = useState(false);
@@ -195,8 +197,11 @@ export function ConversationList({ activeId, onSelect, viewId }: ConversationLis
     if (typeof savedPrefs.showGroups === 'boolean') {
       setShowGroups(savedPrefs.showGroups);
     }
-    if (savedPrefs.selectedChannelId !== undefined) {
-      setSelectedChannelId(savedPrefs.selectedChannelId ?? null);
+    if (Array.isArray(savedPrefs.selectedChannelIds)) {
+      setSelectedChannelIds(savedPrefs.selectedChannelIds);
+    } else if (savedPrefs.selectedChannelId !== undefined) {
+      // Preferência antiga (um canal só).
+      setSelectedChannelIds(savedPrefs.selectedChannelId ? [savedPrefs.selectedChannelId] : []);
     }
     if (savedPrefs.selectedSegmentId !== undefined) {
       setSelectedSegmentId(savedPrefs.selectedSegmentId ?? null);
@@ -291,12 +296,18 @@ export function ConversationList({ activeId, onSelect, viewId }: ConversationLis
     [updatePrefs],
   );
 
-  const handleChannelChange = useCallback(
-    (next: string | null) => {
-      // Canal e segmento são mutuamente exclusivos no seletor.
-      setSelectedChannelId(next);
+  // Canais e segmento são mutuamente exclusivos no seletor. Salva por
+  // usuário (preferências no servidor); `selectedChannelId` continua
+  // gravado pra quem ainda lê o formato antigo.
+  const handleChannelsChange = useCallback(
+    (next: string[]) => {
+      setSelectedChannelIds(next);
       setSelectedSegmentId(null);
-      updatePrefs({ selectedChannelId: next, selectedSegmentId: null });
+      updatePrefs({
+        selectedChannelIds: next,
+        selectedChannelId: next.length === 1 ? next[0] : null,
+        selectedSegmentId: null,
+      });
     },
     [updatePrefs],
   );
@@ -304,8 +315,8 @@ export function ConversationList({ activeId, onSelect, viewId }: ConversationLis
   const handleSegmentChange = useCallback(
     (next: string | null) => {
       setSelectedSegmentId(next);
-      setSelectedChannelId(null);
-      updatePrefs({ selectedSegmentId: next, selectedChannelId: null });
+      setSelectedChannelIds([]);
+      updatePrefs({ selectedSegmentId: next, selectedChannelIds: [], selectedChannelId: null });
     },
     [updatePrefs],
   );
@@ -362,9 +373,22 @@ export function ConversationList({ activeId, onSelect, viewId }: ConversationLis
     }
   }, [tags, selectedTagIds, updatePrefs]);
 
+  // Canal salvo que sumiu (removido) sai do filtro. Antes da lista de
+  // canais chegar, confia no que estava salvo.
+  const activeChannelIds = useMemo(
+    () =>
+      channels.length === 0
+        ? selectedChannelIds
+        : selectedChannelIds.filter((id) => channels.some((c) => c.id === id)),
+    [channels, selectedChannelIds],
+  );
+  const channelsKey = useMemo(() => [...activeChannelIds].sort().join(','), [activeChannelIds]);
   const selectedChannel = useMemo(
-    () => channels.find((c) => c.id === selectedChannelId) ?? null,
-    [channels, selectedChannelId],
+    () =>
+      activeChannelIds.length === 1
+        ? (channels.find((c) => c.id === activeChannelIds[0]) ?? null)
+        : null,
+    [channels, activeChannelIds],
   );
 
   const selectedSegment = useMemo(
@@ -375,7 +399,7 @@ export function ConversationList({ activeId, onSelect, viewId }: ConversationLis
   // Reset scroll when filters/search change
   useEffect(() => {
     scrollContainerRef.current?.scrollTo({ top: 0 });
-  }, [filterKey, debouncedSearch, selectedChannelId, selectedSegmentId, scope, showGroups, tagsKey]);
+  }, [filterKey, debouncedSearch, channelsKey, selectedSegmentId, scope, showGroups, tagsKey]);
 
   // Filtros que unificam por grupo (segmento OU projeto) — são sempre
   // grupos: força groups=only e ignora o filtro de canal. Segmento tem
@@ -413,7 +437,9 @@ export function ConversationList({ activeId, onSelect, viewId }: ConversationLis
       } else {
         if (!showGroups) params.groups = 'exclude';
       }
-      if (selectedChannelId) params.channelId = selectedChannelId;
+      // Um canal vai em `channelId`; vários em `channelIds` (CSV).
+      if (activeChannelIds.length === 1) params.channelId = activeChannelIds[0];
+      else if (activeChannelIds.length > 1) params.channelIds = activeChannelIds.join(',');
     }
     if (debouncedSearch) params.search = debouncedSearch;
     if (selectedTagIds.length > 0) params.tagIds = selectedTagIds.join(',');
@@ -429,7 +455,7 @@ export function ConversationList({ activeId, onSelect, viewId }: ConversationLis
     mineProjects,
     currentUserId,
     showGroups,
-    selectedChannelId,
+    activeChannelIds,
     debouncedSearch,
     selectedTagIds,
     scope,
@@ -442,7 +468,7 @@ export function ConversationList({ activeId, onSelect, viewId }: ConversationLis
     hasNextPage,
     isFetchingNextPage,
   } = useInfiniteQuery({
-    queryKey: ['conversations', orgId, viewId ?? null, filterKey, debouncedSearch, selectedChannelId, selectedSegmentId, scope, currentUserId],
+    queryKey: ['conversations', orgId, viewId ?? null, filterKey, debouncedSearch, channelsKey, selectedSegmentId, scope, currentUserId],
     queryFn: ({ pageParam = 1 }) => {
       const params: Record<string, string> = {
         limit: '30',
@@ -483,7 +509,7 @@ export function ConversationList({ activeId, onSelect, viewId }: ConversationLis
       orgId,
       filterKey,
       debouncedSearch,
-      selectedChannelId,
+      channelsKey,
       scope,
       currentUserId,
     ],
@@ -1267,7 +1293,9 @@ export function ConversationList({ activeId, onSelect, viewId }: ConversationLis
                 ? Layers
                 : selectedChannel
                   ? channelIcons[selectedChannel.type] || MessageSquare
-                  : Inbox;
+                  : activeChannelIds.length > 1
+                    ? Layers
+                    : Inbox;
               return <Icon className="h-3.5 w-3.5 shrink-0 text-zinc-500 dark:text-zinc-400" />;
             })()}
             <span className="flex-1 truncate font-medium">
@@ -1275,7 +1303,9 @@ export function ConversationList({ activeId, onSelect, viewId }: ConversationLis
                 ? selectedSegment.name
                 : selectedChannel
                   ? selectedChannel.name
-                  : 'Todos os canais'}
+                  : activeChannelIds.length > 1
+                    ? `${activeChannelIds.length} canais`
+                    : 'Todos os canais'}
             </span>
             <ChevronDown className="h-3.5 w-3.5 shrink-0 text-zinc-400" />
           </PopoverButton>
@@ -1287,10 +1317,10 @@ export function ConversationList({ activeId, onSelect, viewId }: ConversationLis
             {({ close }) => (
               <>
                 {(() => {
-                  const allActive = selectedChannelId === null && selectedSegmentId === null;
+                  const allActive = activeChannelIds.length === 0 && selectedSegmentId === null;
                   return (
                     <button
-                      onClick={() => { handleChannelChange(null); close(); }}
+                      onClick={() => { handleChannelsChange([]); close(); }}
                       className={`flex w-full items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left text-[13px] transition-colors ${
                         allActive
                           ? 'bg-primary/[0.06] font-medium text-primary dark:bg-primary/10'
@@ -1306,25 +1336,42 @@ export function ConversationList({ activeId, onSelect, viewId }: ConversationLis
                 {channels.length > 0 && (
                   <div className="mx-2 my-1 border-t border-zinc-100 dark:border-zinc-800" />
                 )}
-                {channels.map((channel) => {
-                  const Icon = channelIcons[channel.type] || MessageSquare;
-                  const isActive = selectedChannelId === channel.id;
-                  return (
-                    <button
-                      key={channel.id}
-                      onClick={() => { handleChannelChange(channel.id); close(); }}
-                      className={`flex w-full items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left text-[13px] transition-colors ${
-                        isActive
-                          ? 'bg-primary/[0.06] font-medium text-primary dark:bg-primary/10'
-                          : 'text-zinc-700 hover:bg-zinc-50 dark:text-zinc-300 dark:hover:bg-zinc-800/60'
-                      }`}
-                    >
-                      <Icon className="h-3.5 w-3.5 shrink-0" />
-                      <span className="flex-1 truncate">{channel.name}</span>
-                      {isActive && <Check className="h-3.5 w-3.5 text-primary" />}
-                    </button>
-                  );
-                })}
+                {/* Canais marcam/desmarcam sem fechar — dá pra escolher vários. */}
+                <div className="max-h-[320px] overflow-y-auto scrollbar-thin">
+                  {channels.map((channel) => {
+                    const Icon = channelIcons[channel.type] || MessageSquare;
+                    const isActive = activeChannelIds.includes(channel.id);
+                    return (
+                      <button
+                        key={channel.id}
+                        onClick={() =>
+                          handleChannelsChange(
+                            isActive
+                              ? activeChannelIds.filter((id) => id !== channel.id)
+                              : [...activeChannelIds, channel.id],
+                          )
+                        }
+                        className={`flex w-full items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left text-[13px] transition-colors ${
+                          isActive
+                            ? 'bg-primary/[0.06] font-medium text-primary dark:bg-primary/10'
+                            : 'text-zinc-700 hover:bg-zinc-50 dark:text-zinc-300 dark:hover:bg-zinc-800/60'
+                        }`}
+                      >
+                        <span
+                          className={`flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-[3px] border ${
+                            isActive
+                              ? 'border-primary bg-primary text-white'
+                              : 'border-zinc-300 dark:border-zinc-600'
+                          }`}
+                        >
+                          {isActive && <Check className="h-2.5 w-2.5" />}
+                        </span>
+                        <Icon className="h-3.5 w-3.5 shrink-0" />
+                        <span className="flex-1 truncate">{channel.name}</span>
+                      </button>
+                    );
+                  })}
+                </div>
                 {segments.length > 0 && (
                   <>
                     <div className="mx-2 my-1 border-t border-zinc-100 dark:border-zinc-800" />
