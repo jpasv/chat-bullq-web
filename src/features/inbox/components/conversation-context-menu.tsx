@@ -11,6 +11,7 @@ import {
   Check,
   Loader2,
   KanbanSquare,
+  ListChecks,
   Archive,
   ArchiveRestore,
   Pin,
@@ -36,6 +37,8 @@ interface ConversationContextMenuProps {
   conversation: Conversation;
   position: { x: number; y: number };
   onClose: () => void;
+  /** "Selecionar": marca esta conversa e entra no modo de seleção em massa. */
+  onStartSelection?: () => void;
 }
 
 const MENU_WIDTH = 224;
@@ -45,6 +48,7 @@ export function ConversationContextMenu({
   conversation,
   position,
   onClose,
+  onStartSelection,
 }: ConversationContextMenuProps) {
   const queryClient = useQueryClient();
   const orgId = useOrgId();
@@ -290,6 +294,21 @@ export function ConversationContextMenu({
     >
       {view === 'root' && (
         <>
+          {onStartSelection && (
+            <>
+              <button
+                onClick={() => {
+                  onStartSelection();
+                  onClose();
+                }}
+                className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left text-[13px] text-zinc-700 transition-colors hover:bg-zinc-50 dark:text-zinc-300 dark:hover:bg-zinc-800/60"
+              >
+                <ListChecks className="h-3.5 w-3.5 shrink-0 text-zinc-500 dark:text-zinc-400" />
+                <span className="flex-1">Selecionar</span>
+              </button>
+              <div className="my-1 border-t border-zinc-100 dark:border-zinc-800" />
+            </>
+          )}
           <div className="px-2.5 py-1.5 text-[11px] font-medium uppercase tracking-wider text-zinc-400 dark:text-zinc-500">
             Atribuir tag
           </div>

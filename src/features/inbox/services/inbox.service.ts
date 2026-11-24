@@ -372,6 +372,20 @@ export const inboxService = {
     return { failed };
   },
 
+  /** Fixa/desafixa em lote, de 5 em 5 como o arquivar. Devolve quantas falharam
+   *  (fixar falha quando o usuário já tem 50 fixadas). */
+  async bulkSetPinned(ids: string[], pinned: boolean): Promise<{ failed: number }> {
+    const action = pinned ? 'pin' : 'unpin';
+    let failed = 0;
+    for (let i = 0; i < ids.length; i += 5) {
+      const results = await Promise.allSettled(
+        ids.slice(i, i + 5).map((id) => api.post(`/conversations/${id}/${action}`)),
+      );
+      failed += results.filter((r) => r.status === 'rejected').length;
+    }
+    return { failed };
+  },
+
   async bulkSetAi(ids: string[], enabled: boolean | null): Promise<void> {
     await Promise.allSettled(
       ids.map((id) => api.patch(`/conversations/${id}/ai`, { enabled })),
